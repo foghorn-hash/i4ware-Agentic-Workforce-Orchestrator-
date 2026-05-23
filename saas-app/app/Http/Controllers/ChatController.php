@@ -1,0 +1,799 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Events\Message;
+use App\Events\UserTyping;
+use App\Events\AiThinking;
+use App\Events\UserSpeech;
+use App\Models\Message as MessageModel;
+use Illuminate\Http\Request;
+use App\Models\User;
+use Auth;
+use Storage;
+use App\Services\OpenAIService;
+use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Validator;
+use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\IOFactory;
+use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\Log;
+use App\Exports\PdfExport;
+use Maatwebsite\Excel\Facades\Excel;
+use Smalot\PdfParser\Parser;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
+class ChatController extends Controller
+{
+    protected $user;
+    protected $openAiService;
+    protected $markdownService;
+
+    public function __construct(OpenAIService $openAiService)
+    {
+        //$this->apiToken = uniqid(base64_encode(Str::random(40)));
+        $this->middleware('auth:api');
+        $this->user = new User;
+        $this->openAiService = $openAiService;
+    }
+
+    /**
+     * Handle the incoming chat messages.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function message(Request $request)
+    {
+        // Debug: Log the request details
+        Log::info('Message Request - Method: ' . $request->method());
+        Log::info('Message Request - URL: ' . $request->fullUrl());
+        $authHeader = $request->header('Authorization');
+        Log::info('Message Request - Auth Header: ' . ($authHeader ? substr($authHeader, 0, 50) . '...' : 'MISSING'));
+        Log::info('Message Request - Full Auth Header Length: ' . ($authHeader ? strlen($authHeader) : 0));
+
+        try {
+            $user = Auth::user();
+            Log::info('PDF Request - Auth User: ' . ($user ? $user->id : 'NULL'));
+        } catch (\Exception $e) {
+            Log::error('PDF Request - Auth Error: ' . $e->getMessage());
+        }
+
+        $user = Auth::user();
+
+        $message = new MessageModel();
+        $message->user_id = $user->id;
+        $message->domain = $user->domain;
+        $message->username = $request->input('username');
+        $message->message = $request->input('message');
+        $message->type = $request->input('type');
+        $message->save();
+
+        // Load the user relationship so the broadcast has full info
+        $message->load('users');
+
+        // Trigger the broadcast
+        event(new Message($message));
+
+        return response()->json([
+            'status' => 'Message sent successfully!',
+            'message' => [
+                'id' => $message->id,
+                'username' => $message->username,
+                'message' => $message->message,
+                'formatted_created_at' => $message->created_at->format('Y-m-d H:i:s'),
+                'profile_picture_path' => $user->profile_picture_path,
+                'gender' => $user->gender,
+                'image_path' => null,
+            ]
+        ], 200);
+    }
+    
+    /**
+     * Retrieve the latest chat messages.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    
+    public function getMessages(Request $request)
+    {
+        $user = Auth::user();
+
+        // Select messages with user info
+        $messages = MessageModel::select('messages.*', 'users.profile_picture_path', 'users.gender')
+            ->leftJoin('users', 'messages.user_id', '=', 'users.id')
+            ->where(function ($query) use ($user) {
+                $query->where('messages.domain', '=', $user->domain)
+                    ->orWhere(function ($query) use ($user) {
+                        $query->whereNull('messages.user_id')
+                            ->where('messages.domain', '=', $user->domain);
+                    });
+            })
+            ->orderBy('messages.id', 'desc')
+            ->get()
+            ->map(function ($message) {
+                $message->formatted_created_at = $message->created_at->format('Y-m-d H:i:s');
+                return $message;
+            });
+
+        $perPage = 6;
+        $page = $request->input('page', 1);
+        $offset = ($page - 1) * $perPage;
+
+        $paginated = $messages->slice($offset, $perPage)->values(); // slice returns a Collection
+
+        return response()->json([
+            'messages' => $paginated,
+            'current_page' => (int) $page,
+            'per_page' => $perPage,
+            'total' => $messages->count(),
+            'last_page' => ceil($messages->count() / $perPage),
+        ]);
+    }
+
+
+    public function userTyping(Request $request)
+    {
+        $username = $request->username;
+        $isTyping = $request->isTyping;
+        if (!$username || !isset($isTyping)) {
+            return response()->json(['error' => 'Invalid typing data'], 400);
+        }
+        broadcast(new UserTyping($username, $isTyping))->toOthers();
+        return response()->json(['status' => 'success']);
+    }
+
+    public function speech(Request $request)
+    {
+        $username = $request->username;
+        $isSpeech = $request->isSpeech;
+    
+        broadcast(new UserSpeech($username, $isSpeech))->toOthers();
+    
+        return response()->json(['status' => 'success', 'message' => $isSpeech]);
+    }
+    
+    public function uploadMessage(Request $request)
+    {
+        // Get the authenticated user's ID
+        $user = Auth::user();
+
+        // Validate incoming request
+        try {
+            $request->validate([
+                'message' => 'nullable|string',
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif',
+            ]);
+        } catch (ValidationException $e) {
+            // Log validation errors
+            $errors = $e->validator->errors()->all();
+            Log::error('Validation errors: ' . implode(', ', $errors));
+            return response()->json(['message' => 'Validation error', 'errors' => $errors], 422);
+        }
+
+        // Handle image upload
+        try {
+            $imagePath = $request->file('image')->store('public/uploads');
+        } catch (FileException $e) {
+            Log::error('File upload error: ' . $e->getMessage());
+            return response()->json(['message' => 'File upload error'], 500);
+        }
+
+        // Create new message
+        $message = new MessageModel();
+        $message->username = $user->name;
+        $message->user_id = $user->id;
+        $message->domain = $user->domain;
+        $message->type = 'image';
+        $message->message = $request->input('message') ?? '';
+        $message->image_path = str_replace('public/', 'storage/', $imagePath); // Adjust image path for public access
+        $message->save();
+
+        // Trigger an event for the new message
+        event(new Message($message));
+
+        return response()->json(['message' => 'Image uploaded successfully'], 201);
+    }
+
+    public function captureUpload(Request $request){
+
+        $user = Auth::user();
+    
+        $file = $request->file;
+    
+        if($file){
+            $filename = uniqid() . '.jpg';    
+            
+            $imageData = file_get_contents($file);
+            Storage::put('public/uploads/' . $filename, $imageData);
+            $path = 'storage/uploads/'.$filename;
+            
+            // Create new message
+            $message = new MessageModel();
+            $message->username = $user->name;
+            $message->user_id = $user->id;
+            $message->domain = $user->domain;
+            $message->type = 'image';
+            $message->message = $request->input('message') ?? '';
+            $message->image_path = $path; // Adjust image path for public access
+            $message->save();
+
+            // Trigger an event for the new message
+            event(new Message($message));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Your profile web-cam photo have been saved successfully.',
+            ], 200);
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your profile web-cam photo is not saved successfully.',
+            ], 200);
+        }
+      
+    }
+
+    private function analyzeMessage($messageText)
+    {
+        $client = new Client();
+
+        try {
+            $response = $client->post('https://api.canva.com/analyze', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . env('CANVA_AI_API_KEY'),
+                    'Content-Type' => 'application/json',
+                ],
+                'body' => json_encode(['text' => $messageText]),
+            ]);
+
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Exception $e) {
+            // Handle API call failure
+            return ['error' => 'Unable to analyze message'];
+        }
+    }
+
+    public function generateResponse(Request $request)
+    {
+
+        $prompt = $request->input('prompt');
+        $language = $request->input('language', 'en'); // Default to English if not specified
+        $response = $this->openAiService->generateText($prompt, $language);
+
+        return response()->json(['response' => $response]);
+    }
+
+    public function generateImage(Request $request) {
+
+        $prompt = $request->input('prompt');
+        $language = $request->input('language', 'en'); // Default to English if not specified
+
+        Log::info('Generating image', ['prompt' => $prompt, 'language' => $language]);
+
+        $response = $this->openAiService->generateImage($prompt, $language);
+
+        Log::info('Image generation response', ['response' => $response]);
+
+        return response()->json(['response' => $response]);
+
+    }
+
+    public function saveMessageToDatabase(Request $request)
+    {
+        $user = Auth::user();
+        $data = $request->all();
+        $generate = $data['generate'];
+        $language = $data['language'] ?? 'en'; // Get language from request
+
+        Log::info('Saving message to database', ['data' => $data, 'generate' => $generate, 'language' => $language]);
+
+        $message = new MessageModel();
+
+        if ($generate === true) {
+            $file = file_get_contents($data['message']['data'][0]['url']);
+            $fileName = 'ai_images/' . uniqid() . '.png';
+            Storage::disk('public')->put($fileName, $file);
+
+            // Generate localized description instead of using revised_prompt
+            $originalPrompt = $data['original_prompt'] ?? $data['message']['data'][0]['revised_prompt'];
+            $localizedDescription = $this->openAiService->generateText(
+                "Describe this image generation request in a conversational way: " . $originalPrompt,
+                $language
+            );
+
+            $message->username = "AI";
+            $message->user_id = null;
+            $message->domain = $user->domain;
+            $message->image_path = 'storage/' . $fileName;
+            $message->message = $localizedDescription;
+            $message->type = "image";
+            $message->gender = "male";
+        } else {
+            $prompt = $data['message'];
+            $filename = $data['filename'] ?? null;
+            $type = $data['type'] ?? 'text';
+
+            $message->username = "AI";
+            $message->user_id = null;
+            $message->domain = $user->domain;
+            $message->message = $prompt;
+            $message->gender = "male";
+            $message->file_path = $filename ? ('storage/' . $filename) : null;
+            $assetBase = rtrim(
+                env(
+                    'APP_ASSET_URL',
+                    rtrim(env('APP_NGROK_URL', env('APP_URL')), '/') . '/storage'
+                ),
+                '/'
+            );
+            $message->download_link = $filename ? ($assetBase . '/' . $filename) : null;
+            $message->type = $type;
+        }
+        $message->save();
+
+        // FIXED: Pass the full model to the event
+        event(new Message($message));
+
+        // Return a frontend-ready payload so UI can update immediately (even if Pusher fails)
+        $message->load('users');
+
+        return response()->json([
+            'success' => true,
+            'message' => [
+                'id' => $message->id,
+                'username' => $message->username,
+                'message' => $message->message,
+                'formatted_created_at' => optional($message->created_at)->format('Y-m-d H:i:s'),
+                'profile_picture_path' => optional($message->users)->profile_picture_path,
+                'gender' => optional($message->users)->gender ?? 'male',
+                'image_path' => $message->image_path,
+                'type' => $message->type,
+                'file_path' => $message->file_path,
+                'download_link' => $message->download_link,
+            ],
+        ], 200);
+}
+    public function thinking(Request $request)
+    {
+        $user = "AI";
+        $isThinking = $request->isThinking;
+
+        broadcast(new AiThinking($user, $isThinking))->toOthers();
+
+        return response()->json(['status' => 'Thinking Message Sent!', 'message' => $isThinking]);
+    }
+
+    public function uploadVideo(Request $request)
+    {
+        // Validate the incoming request
+        /*       $validator = Validator::make($request->all(), [
+            'file' => 'required|file|mimes:jpeg,png,jpg,gif,webm,mp4|max:50000', // Adjust max file size if needed
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 400);
+        } */
+
+        $user = Auth::user();
+
+        // Handle file upload
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+
+            // Generate a unique filename
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+
+            // Determine if the file is a video
+            $isVideo = $file->getClientOriginalExtension() == 'mp4';
+
+            // Move the uploaded file to the storage directory
+            $path = $file->storeAs('public/uploads', $filename);
+
+            $path_to_store_in_db = 'storage/uploads/'.$filename;
+
+            // Create a new record in the database
+            $message = new MessageModel();
+            $message->username = $user->name;
+            $message->user_id = $user->id;
+            $message->domain = $user->domain;
+            $message->type = 'video';
+            $message->message = $request->input('message') ?? '';
+            $message->image_path = $path_to_store_in_db; // Adjust image path for public access
+            $message->save();
+
+            // Trigger an event for the new message
+             event(new Message($message));
+
+            return response()->json(['message' => 'Media uploaded successfully'], 200);
+        }
+
+        return response()->json(['error' => 'Media file not found in request'], 400);
+    }
+
+    public function synthesize(Request $request)
+    {
+        $messageId = $request->input('message_id');
+        $text = $request->input('text');
+        $voice = $request->input('voice', 'alloy');
+
+        // Retrieve the message by its ID
+        $message = MessageModel::find($messageId);
+
+        if ($message && $message->audio_path) {
+            // If audio_path is not null, return the existing audio path
+            return response()->json(['url' => Storage::url($message->audio_path)]);
+        }
+
+        $audioContent = $this->openAiService->synthesizeSpeech($text, $voice);
+
+        $fileName = 'audio/' . uniqid() . '.mp3';
+        Storage::disk('public')->put($fileName, $audioContent);
+
+        // Update the message with the new audio path
+        if ($message) {
+            $message->audio_path = $fileName;
+            $message->save();
+        }
+
+        return response()->json(['url' => Storage::url($fileName)]);
+    }
+
+    public function transcribe(Request $request)
+    {
+        $request->validate([
+            'audio' => 'required|file|mimes:ogg,mp3,wav,webm',
+        ]);
+
+        $user = Auth::user();
+
+        $audioFile = $request->file('audio');
+        $audioPath = $audioFile->store('audio', 'public');
+
+        $transcription = $this->openAiService->transcribeSpeech($audioPath);
+
+        $message = new MessageModel();
+        $message->username = $user->name;
+        $message->user_id = $user->id;
+        $message->domain = $user->domain;
+        $message->message = $transcription ?? '';
+        $message->save();
+
+        // Important: trigger event with the whole $message
+        event(new Message($message));
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,  // now frontend has full info
+        ]);
+    }
+
+    /**
+     * Detect if text contains programming code (8 languages supported)
+     * Same logic as frontend detectCode() function
+     */
+    private function detectCode($text)
+    {
+        if (empty($text) || trim($text) === '') {
+            return false;
+        }
+
+        // Detect code blocks with language identifiers (```php, ```python, etc.)
+        if (preg_match('/```(php|python|py|java|javascript|js|typescript|ts|csharp|cs|c#|go|rust|rs|ruby|rb|perl|pl|c\+\+|cpp|c|html|css|sql|bash|sh|json|xml|yaml|yml)/i', $text)) {
+            return true;
+        }
+
+        // Detect generic code blocks (``` ```)
+        if (preg_match('/```[\s\S]*?```/i', $text)) {
+            return true;
+        }
+
+        // Programming language patterns (8 languages)
+        $patterns = [
+            // JavaScript: if, for, while, const, let, function declaration, class, console.log, =>, try
+            'javascript' => '/(\bif\s*\(|\bfor\s*\(|\bwhile\s*\(|\bconst\s+\w+|\blet\s+\w+|class\s+[A-Z]\w*|class\s+\w+\s*[\{]|class\s+\w+\s+extends|function\s+\w+\s*\(|console\.log\s*\(|\=\>\s*\{|\btry\s*\{)/',
+
+            // PHP: <?php, $var=, function, echo, public function
+            'php' => '/(<?php|\$\w+\s*=|function\s+\w+\s*\(|echo\s+|public\s+function)/i',
+
+            // TypeScript: interface, type, public:, private:, :string, :number
+            'typescript' => '/(interface\s+\w+|type\s+\w+\s*=|public\s+\w+:|private\s+\w+:|:\s*string|:\s*number)/i',
+
+            // Python: def, class:, import, from...import, print
+            'python' => '/(\bdef\s+\w+\s*\(|\bclass\s+\w+\s*:|\bimport\s+\w+|\bfrom\s+\w+\s+import|\bprint\s*\()/i',
+
+            // Java: public class, public static void, System.out.println, private
+            'java' => '/(public\s+class\s+\w+|public\s+static\s+void|System\.out\.println|private\s+\w+\s+\w+)/i',
+
+            // C#: using System, namespace, public class, Console.WriteLine, private/public typed vars
+            'csharp' => '/(using\s+System|namespace\s+\w+|public\s+class\s+\w+|Console\.WriteLine|private\s+\w+\s+\w+|public\s+\w+\s+\w+)/i',
+
+            // Go: func main, package main, fmt.Println, import "fmt", :=
+            'go' => '/(\bfunc\s+main\s*\(|\bpackage\s+main|fmt\.Println|import\s+"fmt"|\w+\s*:=)/i',
+
+            // Rust: fn main, let mut, println!, impl, use std::
+            'rust' => '/(\bfn\s+main\s*\(|\blet\s+mut\b|println!\s*\(|\bimpl\s+\w+|use\s+std::)/i',
+        ];
+
+        foreach ($patterns as $language => $pattern) {
+            if (preg_match($pattern, $text)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function generateWordFile(Request $request)
+    {
+        $prompt = $request->input('prompt');
+        $aiResponse = $this->openAiService->askChatGPT($prompt);
+
+        // Check if AI response contains code - if yes, don't generate Word file
+        if ($this->detectCode($aiResponse)) {
+            return response()->json([
+                'success' => false,
+                'filename' => null,
+                'message' => $aiResponse,
+                'code_detected' => true,
+                'reason' => 'Word document generation disabled for code snippets'
+            ]);
+        }
+
+        // Generate unique filename
+        $filename = 'chatgpt_output_' . uniqid() . '.docx';
+        $path = storage_path("app/public/$filename");
+        $lines = explode("\n", $aiResponse);
+        // Create Word file
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+
+        $titleStyle = ['bold' => true, 'size' => 16];
+        $headingStyle = ['bold' => true, 'size' => 14];
+        $normalStyle = ['size' => 12];
+
+        $prevLineEmpty = true;
+        foreach ($lines as $index => $line) {
+            $line = trim($line);
+
+            if (empty($line)) {
+                // Empty line - add line break
+                $section->addTextBreak();
+                $prevLineEmpty = true;
+                continue;
+            }
+
+            // Check if line contains inline bold markdown (**text**)
+            if (preg_match('/\*\*(.*?)\*\*/', $line)) {
+                // Split line into parts with bold and normal text
+                $parts = preg_split('/(\*\*.*?\*\*)/', $line, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+
+                $textRun = $section->addTextRun($normalStyle);
+
+                foreach ($parts as $part) {
+                    if (preg_match('/^\*\*(.*?)\*\*$/', $part, $matches)) {
+                        // Bold text
+                        $textRun->addText($matches[1], ['bold' => true, 'size' => 12]);
+                    } else {
+                        // Normal text
+                        $textRun->addText($part, ['size' => 12]);
+                    }
+                }
+                $prevLineEmpty = false;
+            } else {
+                // Check if this is a heading (short line after empty line, or numbered section)
+                $nextLine = isset($lines[$index + 1]) ? trim($lines[$index + 1]) : '';
+                $isHeading = false;
+
+                // Detect heading patterns:
+                // 1. Short line (< 60 chars) after empty line, followed by longer text
+                // 2. Numbered/lettered sections (1., a., i., etc)
+                // 3. Common EULA section titles
+                if ($prevLineEmpty && strlen($line) < 60 && !empty($nextLine) && strlen($nextLine) > 60) {
+                    $isHeading = true;
+                } elseif (preg_match('/^(\d+\.|[a-z]\.|[ivx]+\.)\s/i', $line)) {
+                    $isHeading = true;
+                } elseif (preg_match('/^(License Grant|Restrictions|Ownership|Termination|Disclaimer|Limitation of Liability|Governing Law|Entire Agreement|Definitions|Intellectual Property|Warranty|Support|Updates|Payment|Confidentiality|Indemnification|Severability|Notices)/i', $line)) {
+                    $isHeading = true;
+                }
+
+                if ($isHeading) {
+                    // Add as bold heading
+                    $section->addText($line, ['bold' => true, 'size' => 12]);
+                } else {
+                    // Normal text
+                    $section->addText($line, $normalStyle);
+                }
+                $prevLineEmpty = false;
+            }
+        }
+        // Save the Word file
+        IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+
+        // Return filename to frontend
+        return response()->json([
+            'success' => true,
+            'filename' => $filename,
+            'message' => $aiResponse
+        ]);
+    }
+
+    public function generateExcelFile(Request $request)
+    {
+        $prompt = $request->input('prompt');
+        $aiResponse = $this->openAiService->askChatGPTForCsv($prompt);
+
+        $filename = 'chatgpt_output_' . uniqid() . '.xlsx';
+        $path = storage_path("app/public/$filename");
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('AI Data');
+
+        $csv = trim((string) $aiResponse);
+        $csv = preg_replace('/^```[a-zA-Z]*\s*/', '', $csv);
+        $csv = preg_replace('/```$/', '', $csv);
+        $csv = trim((string) $csv);
+
+        $lines = preg_split('/\r\n|\r|\n/', $csv) ?: [];
+        $rows = [];
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+            $rows[] = str_getcsv($line);
+        }
+
+        if (count($rows) === 0) {
+            $rows = [
+                ['Content'],
+                [$aiResponse],
+            ];
+        }
+
+        // Normalize column counts
+        $maxCols = 0;
+        foreach ($rows as $r) {
+            $maxCols = max($maxCols, count($r));
+        }
+        foreach ($rows as $ri => $r) {
+            if (count($r) < $maxCols) {
+                $rows[$ri] = array_pad($r, $maxCols, '');
+            }
+        }
+
+        foreach ($rows as $rIndex => $r) {
+            foreach ($r as $cIndex => $cell) {
+                $sheet->setCellValueByColumnAndRow($cIndex + 1, $rIndex + 1, $cell);
+            }
+        }
+
+        // Header styling
+        $sheet->getStyleByColumnAndRow(1, 1, $maxCols, 1)->getFont()->setBold(true);
+        // Simple autosize-ish defaults
+        for ($c = 1; $c <= $maxCols; $c++) {
+            $sheet->getColumnDimensionByColumn($c)->setAutoSize(true);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($path);
+
+        return response()->json([
+            'success' => true,
+            'filename' => $filename,
+            'message' => $aiResponse,
+        ]);
+    }
+
+    public function generatePdfFile(Request $request)
+    {
+        $prompt = $request->input('prompt');
+        $aiResponse = $this->openAiService->askChatGPT($prompt);
+
+        $filename = 'chatgpt_output_' . uniqid() . '.pdf';
+        $path = storage_path("app/public/$filename");
+
+        $options = new Options();
+        $options->set('isRemoteEnabled', true);
+        $dompdf = new Dompdf($options);
+
+        $safeText = nl2br(e($aiResponse));
+        $html = '
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body { font-family: DejaVu Sans, sans-serif; font-size: 12px; line-height: 1.5; margin: 24px; }
+                </style>
+            </head>
+            <body>
+                <div>' . $safeText . '</div>
+            </body>
+            </html>
+        ';
+
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        file_put_contents($path, $dompdf->output());
+
+        return response()->json([
+            'success' => true,
+            'filename' => $filename,
+            'message' => $aiResponse,
+        ]);
+    }
+
+    public function uploadPDF(Request $request, OpenAIService $openAI)
+    {
+
+        $user = Auth::user();
+        $request->validate([
+            'pdf' => 'required|mimes:pdf|max:5120',
+        ]);
+
+        // Extract text from PDF
+        $pdfFile = $request->file('pdf');
+        $prompt = $request->input('message', 'Please analyze this PDF document.');
+        $filename = 'chatgpt_input_' . uniqid() . '_analysis.pdf';
+        $do = $pdfFile->storeAs('public', $filename);
+
+        // Send to OpenAI for analysis - pass the file path for local PDF parsing
+        Log::info('PDF Analysis - Using file path: ' . $filename);
+        $analysis = $openAI->analyzeText($prompt, $filename);
+
+        $path = "public/$filename"; // this goes into storage/app/public/
+        $pathUrl = "storage/$filename"; // this goes into storage/app/public/        
+
+        // Optionally return the file URL so frontend can fetch it
+        $url = env('APP_NGROK_URL', env('APP_URL')) . '/storage/' . $filename; // gives ngrok or public URL for AI access
+
+        // Create a new record in the database
+        $message = new MessageModel();
+        $message->username = "AI";
+        $message->user_id = null;
+        $message->domain = $user->domain;
+        $message->type = 'pdf';
+        $message->message = $analysis;
+        $message->file_path = $pathUrl; // Adjust image path for public access
+        $message->save();
+
+        event(new Message($message));
+
+        return response()->json([
+            'success' => true,
+        ]);
+    }
+
+    public function openAiSession(Request $request)
+    {
+        $client = new Client();
+
+        try {
+            $response = $client->post('https://api.openai.com/v1/realtime/sessions', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+                    'Content-Type'  => 'application/json',
+                ],
+                'json' => [
+                    'model' => 'gpt-4o-realtime-preview',
+                    'voice' => 'alloy',
+                ],
+            ]);
+
+            return response()->json(json_decode($response->getBody(), true));
+
+        } catch (\Exception $e) {
+            Log::error('OpenAI session error: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to create OpenAI session'], 500);
+        }
+    }
+
+}

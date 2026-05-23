@@ -1,0 +1,132 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
+import 'bootstrap/dist/css/bootstrap.min.css';
+import { Container, Row, Col, Table, Form, Button, Card } from 'react-bootstrap';
+import './Timesheet.css';
+import { API_BASE_URL, API_DEFAULT_LANGUAGE, ACCESS_TOKEN_NAME } from "../../constants/apiConstants";
+import { useTranslation } from 'react-i18next';
+import TimesheetForm from "./TimesheetForm";
+import { useAuthToken, api } from './hooks/useAuthToken';
+import { toApiRow, fromApiRow, makeRow, calculateTotals } from './utils/helpers';
+import SummaryPanel from "./Summary";
+import { useTimesheet } from './hooks/useTimesheet';
+import { useAutosaveMeta, useAutosaveRows } from './hooks/useAutosave';
+import { useRowActions } from "./hooks/useRowActions";
+import TimesheetRowsTable from "./TimesheetRowsTable";
+
+export default function Timesheet() {
+
+  const { t } = useTranslation();
+  const { authToken } = useAuthToken();
+
+  const {
+    timesheet,
+    timesheetId,
+    rows,
+    setRows,
+    meta,
+    setMeta,
+    createTimesheet
+  } = useTimesheet(authToken);
+
+  const {
+    unwrap,
+    submitted,
+    handleSubmit,
+    clearAll,
+    toggleExtras,
+    toggleOvertime,
+    showExtras,
+    showOvertime,
+    showExtrasMessage,
+    showOvertimeMessage,
+    statusMessage,
+    statusType,
+    handleMetaChange
+  }
+    = useRowActions(
+      timesheetId,
+      timesheet,
+      rows,
+      setRows,
+      meta,
+      setMeta,
+      t,
+      createTimesheet
+    );
+
+  useEffect(() => {
+    if (timesheetId) {
+      fetchRows(1);
+    }
+  }, [timesheetId]);
+
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    lastPage: 1,
+    total: 0
+  });
+
+  const fetchRows = async (page = 1) => {
+    if (!timesheetId) return;
+
+    try {
+      const res = await api.get(
+        `/api/timesheet/timesheets/${timesheetId}/rows?page=${page}&per_page=10`
+      );
+
+      const response = res.data;
+
+      setRows(response.data.map(fromApiRow));
+
+      setPagination({
+        currentPage: response.current_page,
+        lastPage: response.last_page,
+        total: response.total,
+      });
+
+    } catch (e) {
+      console.error("Failed to fetch rows", e);
+    }
+  };
+
+  const totals = useMemo(() => calculateTotals(rows), [rows]);
+
+  return (
+    <Container fluid className="tcontainer py-4 bg-dark min-vh-100">
+      <Container style={{ maxWidth: 1600 }}>
+        <Card className="shadow-sm mb-3">
+          <Card.Body>
+            <TimesheetForm
+              meta={meta}
+              setMeta={setMeta}
+              submitted={submitted}
+              handleSubmit={handleSubmit}
+              clearAll={clearAll}
+              toggleExtras={toggleExtras}
+              toggleOvertime={toggleOvertime}
+              showExtras={showExtras}
+              showOvertime={showOvertime}
+              showExtrasMessage={showExtrasMessage}
+              showOvertimeMessage={showOvertimeMessage}
+              t={t}
+              statusMessage={statusMessage}
+              statusType={statusType}
+              handleMetaChange={handleMetaChange}
+            />
+          </Card.Body>
+        </Card>
+        <Card className="shadow-sm mb-3">
+          <Card.Body>
+            <TimesheetRowsTable
+              rows={rows}
+              pagination={pagination}
+              fetchRows={fetchRows}
+            />
+          </Card.Body>
+        </Card>
+        <SummaryPanel t={t} totals={totals} />
+      </Container>
+    </Container>
+  );
+}
