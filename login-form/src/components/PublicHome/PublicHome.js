@@ -23,27 +23,6 @@ function PublicHome() {
 
   return (
     <div className="PublicHomePlayer">
-      <video
-        id="my-player"
-        className="video-js PublicHomePlayer"
-        preload="auto"
-        autoplay="true"
-        loop="true"
-        responsive="true"
-        fill="true"
-        disableProgress="true"
-        controls=""
-        data-setup="{}"
-      >
-        <source src="../../blexsus-basic.mp4" type="video/mp4"></source>
-        <p className="vjs-no-js">
-          {t('video')}
-          {t('web')}
-          <a href="https://videojs.com/html5-video-support/" target="_blank">
-            {t('support')}
-          </a>
-        </p>
-      </video>
       <div className="App-copyright">
         <img src={LOGO_COPY} alt="logo" className="App-logo-copyright" />{" "}
         {t('copyright')}
