@@ -20,17 +20,13 @@ import ManageDomainForm from "./components/ManageDomain/ManageDomainForm";
 import Settings from "./components/Settings/Settings";
 import ManageRoles from "./components/ManageRoles/ManageRoles";
 import RoleForm from "./components/ManageRoles/RoleForm";
-import STLViewerComponent from "./components/STLViewerComponent/STLViewerComponent";
-import VideoPhoto from "./components/VideoPhoto/VideoPhoto";
 import PusherChat from "./components/PusherChat/PusherChat";
-import Charts from "./components/RevenueCharts/Charts";
 import ErrorBoundary from "./contexts/ErrorBoundry";
 import LOGO from "./52311-logo-transparent.png";
 import Button from 'react-bootstrap/Button';
 import Offcanvas from 'react-bootstrap/Offcanvas';
 import request from "./utils/Request";
 import Timesheet from "./components/Timesheet/Timesheet";
-import PdfDocumentBank from "./components/PdfDocumentBank/PdfDocumentBank";
 import CvEditor from "./components/CvEditor/CvEditor";
 import IssueTracker from "./components/IssueTracker/IssueTracker";
 import { useTranslation } from 'react-i18next';
@@ -121,7 +117,6 @@ function App() {
                 </Route>
                 <PrivateRoute path="/home" component={Home} />
                 <PrivateRoute path="/my-profile" component={MyProfile} />
-                <PrivateRoute path="/revenue-report" component={Charts} />
                 <PrivateRoute path="/manage-users" component={ManageAdmin} />
                 <PrivateRoute path="/manage-domains/add" component={ManageDomainForm} />
                 <PrivateRoute path="/manage-domains/edit" component={ManageDomainForm} />
@@ -130,11 +125,8 @@ function App() {
                 <PrivateRoute path="/manage-roles/add" component={RoleForm} />
                 <PrivateRoute path="/manage-roles" component={ManageRoles} />
                 <PrivateRoute path="/settings" component={Settings} />
-                <PrivateRoute path="/stl-viewer" component={STLViewerComponent} />
-                <PrivateRoute path="/video-photo" component={VideoPhoto} />
                 <PrivateRoute path="/pusher-chat" component={PusherChat} />
                 <PrivateRoute path="/timesheet" component={Timesheet} />
-                <PrivateRoute path="/document-bank" component={PdfDocumentBank} />
                 <PrivateRoute path="/cv-editor" component={CvEditor} />
                 <PrivateRoute path="/issue-tracker" component={IssueTracker} />
               </Switch>

@@ -116,13 +116,9 @@ function Header(props) {
     <Nav className="flex-column">
       {[
         { text: "myProfile", link: "/my-profile" },
-        { text: "revenueReport", link: "/revenue-report" },
-        { text: "stlViewer", link: "/stl-viewer" },
-        { text: "videoPhoto", link: "/video-photo" },
         { text: "chat", link: "/pusher-chat" },
         { text: "timesheet", link: "/timesheet" },
         { text: "cvEditor", link: "/cv-editor" },
-        { text: "pdfDocumentBank", link: "/pdf-document-bank" },
 
         {
           text: "manageUsers",
@@ -244,33 +240,6 @@ function Header(props) {
                 {authState.isLogged && (
                   <NavLink
                     className="Header-nav-link"
-                    to="/revenue-report"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('revenueReport')}
-                  </NavLink>
-                )}
-                {authState.isLogged && (
-                  <NavLink
-                    className="Header-nav-link"
-                    to="/stl-viewer"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('stlViewer')}
-                  </NavLink>
-                )}
-                {authState.isLogged && (
-                  <NavLink
-                    className="Header-nav-link"
-                    to="/video-photo"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('videoPhoto')}
-                  </NavLink>
-                )}
-                {authState.isLogged && (
-                  <NavLink
-                    className="Header-nav-link"
                     onClick={() => setMobileMenuOpen(false)}
                     to="/pusher-chat"
                   >
@@ -293,15 +262,6 @@ function Header(props) {
                     to="/cv-editor"
                   >
                     {t('cvEditor')}
-                  </NavLink>
-                )}
-                {authState.isLogged && (
-                  <NavLink
-                    className="Header-nav-link"
-                    onClick={() => setMobileMenuOpen(false)}
-                    to="/document-bank"
-                  >
-                    {t('documentBank')}
                   </NavLink>
                 )}
                 {authState.isLogged && (
