@@ -207,6 +207,36 @@ class PermissionSeeder extends Seeder
                         "desc" => $permissions[$i] . " desc",
                         "domain" => NULL,
                     ]);
+                } else if ($permissions[$i] == "purchaseorders.view") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "purchaseorders.edit") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "purchaseorders.add") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                    } else if ($permissions[$i] == "purchaseorders.actions") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "purchaseorders.delete") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
                 } else {
                     $permission = Permission::updateOrCreate([
                         "permission_name" => $permissions[$i],

@@ -108,50 +108,72 @@ const PusherChat = () => {
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
+      // Helper function to setup a data channel and send the session update config
+      const setupDataChannel = (ch, source) => {
+        console.log(`Setting up data channel from ${source}, label: ${ch.label}, readyState: ${ch.readyState}`);
+
+        const sendSessionUpdate = () => {
+          const systemMsg = {
+            type: 'session.update',
+            session: {
+              type: 'realtime',
+              instructions: `You are a helpful assistant. Respond in the same language the user speaks, only languages will be English, Finnish or Swedish. Be concise. Always use markdown formatting and wrap any code snippets in triple backticks with the language prefix (e.g. \`\`\`php ... \`\`\`).`,
+              audio: {
+                input: {
+                  transcription: {
+                    model: 'gpt-4o-transcribe'
+                  }
+                },
+                output: {
+                  voice: 'alloy'
+                }
+              }
+            }
+          };
+          try {
+            ch.send(JSON.stringify(systemMsg));
+            console.log(`Success: Sent session update via ${source}`);
+          } catch (err) {
+            console.log(`Error: Could not send session update via ${source}:`, err);
+          }
+        };
+
+        if (ch.readyState === 'open') {
+          sendSessionUpdate();
+        } else {
+          ch.onopen = () => {
+            console.log(`Success: Data channel opened via ${source}, readyState:`, ch.readyState);
+            sendSessionUpdate();
+          };
+        }
+
+        ch.onmessage = (m) => {
+          console.log(`Raw datachannel message received via ${source}:`, m.data?.substring?.(0, 100));
+          try {
+            const data = JSON.parse(m.data);
+            console.log(`Success: Parsed to JSON via ${source}:`, data.type);
+            handleOpenAIEvent(data);
+          } catch (err) {
+            console.log(`Warning: Data channel message via ${source} (not JSON):`, m.data?.substring?.(0, 200));
+          }
+        };
+
+        ch.onerror = (err) => {
+          console.error(`Error: Data channel error via ${source}:`, err);
+        };
+
+        ch.onclose = () => {
+          console.log(`Warning: Data channel closed via ${source}`);
+          if (dataChannelRef.current === ch) {
+            dataChannelRef.current = null;
+          }
+        };
+      };
+
       // Create client-side data channel for OpenAI events (required by GA WebRTC protocol)
       const dc = pc.createDataChannel("oai-events");
       dataChannelRef.current = dc;
-
-      dc.onopen = () => {
-        console.log('Success: Data channel opened, readyState:', dc.readyState);
-        const systemMsg = {
-          type: 'session.update',
-          session: {
-            instructions: `You are a helpful assistant. Respond in the same language the user speaks, only languages will be English, Finnish or Swedish. Be concise. Always use markdown formatting and wrap any code snippets in triple backticks with the language prefix (e.g. \`\`\`php ... \`\`\`).`,
-            voice: 'alloy',
-            modalities: ['text', 'audio'],
-            input_audio_transcription: {
-              model: 'whisper-1'
-            }
-          }
-        };
-        try {
-          dc.send(JSON.stringify(systemMsg));
-          console.log('Success: Sent session update');
-        } catch (err) {
-          console.log('Error: Could not send session update:', err);
-        }
-      };
-
-      dc.onmessage = (m) => {
-        console.log('Raw datachannel message received:', m.data?.substring?.(0, 100));
-        try {
-          const data = JSON.parse(m.data);
-          console.log('Success: Parsed to JSON:', data.type);
-          handleOpenAIEvent(data);
-        } catch (err) {
-          console.log('Warning: Data channel message (not JSON):', m.data?.substring?.(0, 200));
-        }
-      };
-
-      dc.onerror = (err) => {
-        console.error('Error: Data channel error:', err);
-      };
-
-      dc.onclose = () => {
-        console.log('Warning: Data channel closed');
-        dataChannelRef.current = null;
-      };
+      setupDataChannel(dc, 'createDataChannel');
 
       // play remote audio
       pc.ontrack = (event) => {
@@ -170,48 +192,7 @@ const PusherChat = () => {
       pc.ondatachannel = (ev) => {
         const ch = ev.channel;
         dataChannelRef.current = ch;
-        console.log('Data channel received from OpenAI:', ch.label, 'readyState:', ch.readyState);
-
-        ch.onopen = () => {
-          console.log('Success: Data channel opened, readyState:', ch.readyState);
-          // Send session configuration once channel is open
-          const systemMsg = {
-            type: 'session.update',
-            session: {
-              instructions: `You are a helpful assistant. Respond in the same language the user speaks, only languages will be English, Finnish or Swedish. Be concise. Always use markdown formatting and wrap any code snippets in triple backticks with the language prefix (e.g. \`\`\`php ... \`\`\`).`,
-              voice: 'alloy',
-              modalities: ['text', 'audio'],
-              input_audio_transcription: {
-                model: 'whisper-1'
-              }
-            }
-          };
-          try {
-            ch.send(JSON.stringify(systemMsg));
-            console.log('Success: Sent session update');
-          } catch (err) {
-            console.log('Error: Could not send session update:', err);
-          }
-        };
-
-        ch.onmessage = (m) => {
-          console.log('Raw datachannel message received:', m.data?.substring?.(0, 100));
-          try {
-            const data = JSON.parse(m.data);
-            console.log('Success: Parsed to JSON:', data.type);
-            handleOpenAIEvent(data);
-          } catch (err) {
-            console.log('Warning: Data channel message (not JSON):', m.data?.substring?.(0, 200));
-          }
-        };
-
-        ch.onerror = (err) => {
-          console.error('Error: Data channel error:', err);
-        };
-        ch.onclose = () => {
-          console.log('Warning: Data channel closed');
-          dataChannelRef.current = null;
-        };
+        setupDataChannel(ch, 'ondatachannel');
       };
 
       // Log WebRTC peer connection states
@@ -386,6 +367,39 @@ const PusherChat = () => {
             saveMessageToDatabase(userMessage);
             lastUserTranscriptRef.current = transcript;
           }
+        }
+      }
+
+      // Handle failed transcription warnings
+      if (data.type === 'conversation.item.input_audio_transcription.failed') {
+        console.warn('OpenAI input audio transcription failed:', data.error);
+      }
+
+      // Handle when user conversation item is done (backup transcript source)
+      if (data.type === 'conversation.item.done' && data.item?.role === 'user') {
+        console.log('User conversation item done:', data.item);
+        const content = data.item?.content;
+        if (Array.isArray(content)) {
+          content.forEach((c) => {
+            if (c.type === 'input_audio' && c.transcript) {
+              const transcript = c.transcript;
+              const normNew = transcript.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+              const normPrev = lastUserTranscriptRef.current ? lastUserTranscriptRef.current.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+
+              if (normNew && normNew !== normPrev) {
+                console.log('Success: User transcript from item.done:', transcript);
+                const userMessage = {
+                  username: username,
+                  message: transcript.trim(),
+                  generate: false,
+                  created_at: new Date().toISOString(),
+                };
+                setMessages((prev) => [...prev, userMessage]);
+                saveMessageToDatabase(userMessage);
+                lastUserTranscriptRef.current = transcript;
+              }
+            }
+          });
         }
       }
 
