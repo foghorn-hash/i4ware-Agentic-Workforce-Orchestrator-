@@ -9,10 +9,12 @@ use App\Models\User;
 use App\Models\Settings;
 use App\Models\Domain;
 use App\Models\Role;
+use App\Models\InvoicePaymentTerm;
 use App\Models\RolePermissions;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 class PermissionSeeder extends Seeder
 {
@@ -35,12 +37,28 @@ class PermissionSeeder extends Seeder
             "users.changePassword",
             "users.changeRole",
             "users.addUser",
-            "users.verifyUser",
-            "settings.manage",
+            "users.verifyUser",    
             "roles.view",
             "roles.edit",
             "roles.add",
             "roles.actions",
+            "invoices.view",
+            "invoices.actions",
+            "invoices.add",
+            "invoices.edit",
+            "invoices.uploadLogo",
+            "invoice.uploadTemplates",
+            "purchaseorders.view",
+            "purchaseorders.actions",
+            "purchaseorders.add",
+            "purchaseorders.edit",
+            "purchaseorders.delete",
+            "customers.view",
+            "customers.add",
+            "customers.edit",
+            "customers.delete",
+            "customers.actions",
+            "settings.manage",
         ];
 
         if(env('APP_IS_HOUSE_USE') === false){
@@ -117,6 +135,78 @@ class PermissionSeeder extends Seeder
                         "desc" => $permissions[$i] . " desc",
                         "domain" => NULL,
                     ]);
+                } else if ($permissions[$i] == "invoices.view") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "invoices.actions") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "invoices.add") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "invoices.edit") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "invoices.uploadLogo") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "invoice.uploadTemplates") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "customers.view") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "customers.add") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "customers.edit") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+               } else if ($permissions[$i] == "customers.delete") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "customers.actions") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
+                } else if ($permissions[$i] == "settings.manage") {
+                    $permission = Permission::updateOrCreate([
+                        "permission_name" => $permissions[$i],
+                        "desc" => $permissions[$i] . " desc",
+                        "domain" => NULL,
+                    ]);
                 } else {
                     $permission = Permission::updateOrCreate([
                         "permission_name" => $permissions[$i],
@@ -130,6 +220,8 @@ class PermissionSeeder extends Seeder
                 ],[
                     "role_id" => $role->id,
                     "permission_id" => $permission->id,
+                    "created_at" => now(),
+                    "updated_at" => now(),
                 ]);
             }
 
@@ -152,6 +244,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "domain.edit") {
                     RolePermissions::updateOrInsert([
@@ -160,6 +254,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "users.view") {
                     RolePermissions::updateOrInsert([
@@ -168,6 +264,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "users.statusChange") {
                     RolePermissions::updateOrInsert([
@@ -176,6 +274,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "users.changePassword") {
                     RolePermissions::updateOrInsert([
@@ -184,6 +284,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "users.changeRole") {
                     RolePermissions::updateOrInsert([
@@ -192,6 +294,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "users.addUser") {
                     RolePermissions::updateOrInsert([
@@ -200,6 +304,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "roles.view") {
                     RolePermissions::updateOrInsert([
@@ -208,6 +314,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "roles.edit") {
                     RolePermissions::updateOrInsert([
@@ -216,6 +324,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "roles.add") {
                     RolePermissions::updateOrInsert([
@@ -224,6 +334,8 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
                 } else if ($permissions[$i] == "roles.actions") {
                     RolePermissions::updateOrInsert([
@@ -232,14 +344,179 @@ class PermissionSeeder extends Seeder
                     ],[
                         "role_id" => $role->id,
                         "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
                     ]);
-                } else {
-
+                } else if ($permissions[$i] == "invoices.view") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "invoices.actions") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "invoices.add") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "invoices.edit") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "invoices.uploadLogo") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "invoice.uploadTemplates") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "customers.view") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "customers.add") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "customers.edit") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "customers.delete") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "customers.actions") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "purchaseorders.view") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "purchaseorders.actions") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "purchaseorders.add") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "purchaseorders.edit") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
+                } else if ($permissions[$i] == "purchaseorders.delete") {
+                    RolePermissions::updateOrInsert([
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                    ],[
+                        "role_id" => $role->id,
+                        "permission_id" => $permission->id,
+                        "created_at" => now(),
+                        "updated_at" => now(),
+                    ]);
                 }
             }
 
             $role = Role::updateOrCreate([
                 "name" => "user",
+                "isActive" => true
+            ]);
+
+            $role = Role::updateOrCreate([
+                "name" => "book-keeper",
                 "isActive" => true
             ]);
 
@@ -270,6 +547,11 @@ class PermissionSeeder extends Seeder
                 "isActive" => true
             ]);
 
+            $role = Role::updateOrCreate([
+                "name" => "book-keeper",
+                "isActive" => true
+            ]);
+
         }
 
         DB::beginTransaction();
@@ -294,6 +576,8 @@ class PermissionSeeder extends Seeder
                 'deleted_at' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
+                'invoice_template_path' => null,
+                'invoice_start_number' => 1,
             ]);
 
             User::updateOrCreate([
@@ -306,6 +590,75 @@ class PermissionSeeder extends Seeder
                 'password' => Hash::make(env('APP_DOMAIN_ADMIN_PASSWORD')), // password
                 'remember_token' => Str::random(10),
             ]);
+
+            // Luo yleisimmät maksuehdot käännöksineen
+				$paymentTerms = [
+					[
+						"days_to_pay" => 0,
+						"translations" => [
+							["locale" => "EN", "name" => "Due on receipt"],
+							["locale" => "FI", "name" => "HETI"],
+							["locale" => "SV", "name" => "Direkt"],
+						]
+					],
+					[
+						"days_to_pay" => 7,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 7"],
+							["locale" => "FI", "name" => "7 pv netto"],
+							["locale" => "SV", "name" => "Netto 7"],
+						]
+					],
+					[
+						"days_to_pay" => 14,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 14"],
+							["locale" => "FI", "name" => "14 pv netto"],
+							["locale" => "SV", "name" => "Netto 14"],
+						]
+					],
+					[
+						"days_to_pay" => 15,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 15"],
+							["locale" => "FI", "name" => "15 pv netto"],
+							["locale" => "SV", "name" => "Netto 15"],
+						]
+					],
+					[
+						"days_to_pay" => 30,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 30"],
+							["locale" => "FI", "name" => "30 pv netto"],
+							["locale" => "SV", "name" => "Netto 30"],
+						]
+					],
+					[
+						"days_to_pay" => 60,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 60"],
+							["locale" => "FI", "name" => "60 pv netto"],
+							["locale" => "SV", "name" => "Netto 60"],
+						]
+					],
+					[
+						"days_to_pay" => 90,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 90"],
+							["locale" => "FI", "name" => "90 pv netto"],
+							["locale" => "SV", "name" => "Netto 90"],
+						]
+					],
+				];
+
+				foreach ($paymentTerms as $term) {
+					$paymentTerm = InvoicePaymentTerm::create([
+						"days_to_pay" => $term["days_to_pay"],
+						"domain" => env('APP_DOMAIN_ADMIN'),
+					]);
+					
+					$paymentTerm->translations()->createMany($term["translations"]);
+				}
 
             if(env('APP_IS_HOUSE_USE') === true){
                 Settings::updateOrCreate([
@@ -321,16 +674,11 @@ class PermissionSeeder extends Seeder
                 ]);
 
                 Settings::updateOrCreate([
-                    'setting_key' => "enable_netvisor",
+                    'setting_key' => "saas_price_per_month_per_user",
                     'setting_value' => 0,
                     'system_var' => 1,
                 ]);
 
-                Settings::updateOrCreate([
-                    'setting_key' => "disable_license_details",
-                    'setting_value' => 0,
-                    'system_var' => 1,
-                ]);
             } else {
                 Settings::updateOrCreate([
                     'setting_key' => "show_captcha",
@@ -345,16 +693,11 @@ class PermissionSeeder extends Seeder
                 ]);
 
                 Settings::updateOrCreate([
-                    'setting_key' => "enable_netvisor",
-                    'setting_value' => 0,
+                    'setting_key' => "saas_price_per_month_per_user",
+                    'setting_value' => 5,
                     'system_var' => 1,
                 ]);
 
-                Settings::updateOrCreate([
-                    'setting_key' => "disable_license_details",
-                    'setting_value' => 0,
-                    'system_var' => 1,
-                ]);
             }
 
             DB::commit();

@@ -41,6 +41,56 @@ class AuthController extends Controller
 	}
 
 	/**
+	 * Validate Google reCAPTCHA response when enabled.
+	 *
+	 * @param Request $request
+	 * @return \Illuminate\Http\JsonResponse|null
+	 */
+	private function validateRecaptcha(Request $request)
+	{
+		$show_captcha = DB::table('settings')
+			->select('setting_value')
+			->where('setting_key', '=', 'show_captcha')
+			->where('domain', '=', env('APP_DOMAIN_ADMIN'))
+			->first();
+
+		if (!$show_captcha || $show_captcha->setting_value != '1') {
+			return null;
+		}
+
+		if (!$request->has('recaptcha')) {
+			return response()->json([
+				'success' => false,
+				'error' => 'Captcha verification failed (missing response)'
+			], 200);
+		}
+
+		try {
+			$response = Http::timeout(5)->asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+				'secret' => env('APP_RECAPTCHA_SECRET_KEY'),
+				'response' => $request->input('recaptcha'),
+				'remoteip' => $request->ip(),
+			]);
+		} catch (\Throwable $th) {
+			return response()->json([
+				'success' => false,
+				'error' => 'Captcha verification service is unavailable. Please try again later.'
+			], 200);
+		}
+
+		$result = $response->json();
+
+		if (empty($result['success'])) {
+			return response()->json([
+				'success' => false,
+				'error' => 'Captcha verification failed'
+			], 200);
+		}
+
+		return null;
+	}
+
+	/**
 	 * Write code on Method
 	 *
 	 * @return response()
@@ -58,35 +108,8 @@ class AuthController extends Controller
 	public function submitForgetPasswordForm(Request $request)
 	{
 
-		$show_captcha = DB::table('settings')->select('setting_value')->where('setting_key', '=', 'show_captcha')->where('domain', '=', env('APP_DOMAIN_ADMIN'))->first();
-
-		//echo $show_captcha->setting_value;
-
-		if ($show_captcha->setting_value == '1') {
-
-			if (!$request->has('recaptcha')) {
-				return response()->json([
-					'success' => false,
-					'error' => 'Captcha verification failed (missing response)'
-				], 200);
-			}
-
-			$response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-				'secret'   => env('APP_RECAPTCHA_SECRET_KEY'),
-				'response' => $request->input('recaptcha'),
-				'remoteip' => $request->ip(),
-			]);
-
-			$result = $response->json();
-
-			if (!$result['success']) {
-				return response()->json([
-					'success' => false,
-					'error' => 'Captcha verification failed'
-				], 200);
-				abort(422, 'Captcha verification failed');
-			}
-
+		if ($response = $this->validateRecaptcha($request)) {
+			return $response;
 		}
 
 		$request->validate([
@@ -120,35 +143,8 @@ class AuthController extends Controller
 	public function submitResetPasswordForm(Request $request)
 	{
 
-		$show_captcha = DB::table('settings')->select('setting_value')->where('setting_key', '=', 'show_captcha')->where('domain', '=', env('APP_DOMAIN_ADMIN'))->first();
-
-		//echo $show_captcha->setting_value;
-
-		if ($show_captcha->setting_value == '1') {
-
-			if (!$request->has('recaptcha')) {
-				return response()->json([
-					'success' => false,
-					'error' => 'Captcha verification failed (missing response)'
-				], 200);
-			}
-
-			$response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-				'secret'   => env('APP_RECAPTCHA_SECRET_KEY'),
-				'response' => $request->input('recaptcha'),
-				'remoteip' => $request->ip(),
-			]);
-
-			$result = $response->json();
-
-			if (!$result['success']) {
-				return response()->json([
-					'success' => false,
-					'error' => 'Captcha verification failed'
-				], 200);
-				abort(422, 'Captcha verification failed');
-			}
-
+		if ($response = $this->validateRecaptcha($request)) {
+			return $response;
 		}
 
 		$updatePassword = DB::table('password_resets')
@@ -288,31 +284,8 @@ class AuthController extends Controller
 
 		//echo $disable_registeration_from_others->setting_value;
 
-		if ($show_captcha->setting_value == '1') {
-
-			if (!$request->has('recaptcha')) {
-				return response()->json([
-					'success' => false,
-					'error' => 'Captcha verification failed (missing response)'
-				], 200);
-			}
-
-			$response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-				'secret'   => env('APP_RECAPTCHA_SECRET_KEY'),
-				'response' => $request->input('recaptcha'),
-				'remoteip' => $request->ip(),
-			]);
-
-			$result = $response->json();
-
-			if (!$result['success']) {
-				return response()->json([
-					'success' => false,
-					'error' => 'Captcha verification failed'
-				], 200);
-				abort(422, 'Captcha verification failed');
-			}
-
+		if ($response = $this->validateRecaptcha($request)) {
+			return $response;
 		}
 
 		if ($disable_registeration_from_others->setting_value == '1') {
@@ -446,6 +419,17 @@ class AuthController extends Controller
 				"roles.edit",
 				"roles.add",
 				"roles.actions",
+				"invoices.view",
+				"invoices.actions",
+				"invoices.add",
+				"invoices.edit",
+				"invoices.uploadLogo",
+				"invoice.uploadTemplates",
+				"customers.view",
+				"customers.add",
+				"customers.edit",
+				"customers.delete",
+				"customers.actions",
 				"settings.manage",
 			];
 
@@ -471,6 +455,8 @@ class AuthController extends Controller
 						'type' => "trial",
 						'created_at' => date('Y-m-d H:i:s'),
 						'updated_at' => date('Y-m-d H:i:s'),
+						'invoice_template_path' => null,
+						'invoice_start_number' => 1,
 
 					]
 				]);
@@ -598,6 +584,116 @@ class AuthController extends Controller
 							"created_at" => now(),
                             "updated_at" => now(),
 						]);
+					} else if ($permissions[$i] == "invoices.view") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "invoices.actions") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "invoices.add") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "invoices.edit") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "invoices.uploadLogo") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "invoice.uploadTemplates") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "customers.view") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "customers.add") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "customers.edit") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "customers.delete") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
+					} else if ($permissions[$i] == "customers.actions") {
+						RolePermissions::updateOrInsert([
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+						],[
+							"role_id" => $role->id,
+							"permission_id" => $permission->id,
+							"created_at" => now(),
+                            "updated_at" => now(),
+						]);
 					} else if ($permissions[$i] == "settings.manage") {
 						RolePermissions::updateOrInsert([
 							"role_id" => $role->id,
@@ -622,6 +718,81 @@ class AuthController extends Controller
 					"isActive" => true,
 					"domain" => $request->domain,
 				]);
+
+				$role = Role::updateOrCreate([
+					"name" => "book-keeprer",
+					"isActive" => true,
+					"domain" => $request->domain,
+				]);
+
+				// Luo yleisimmät maksuehdot käännöksineen
+				$paymentTerms = [
+					[
+						"days_to_pay" => 0,
+						"translations" => [
+							["locale" => "EN", "name" => "Due on receipt"],
+							["locale" => "FI", "name" => "HETI"],
+							["locale" => "SV", "name" => "Direkt"],
+						]
+					],
+					[
+						"days_to_pay" => 7,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 7"],
+							["locale" => "FI", "name" => "7 pv netto"],
+							["locale" => "SV", "name" => "Netto 7"],
+						]
+					],
+					[
+						"days_to_pay" => 14,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 14"],
+							["locale" => "FI", "name" => "14 pv netto"],
+							["locale" => "SV", "name" => "Netto 14"],
+						]
+					],
+					[
+						"days_to_pay" => 15,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 15"],
+							["locale" => "FI", "name" => "15 pv netto"],
+							["locale" => "SV", "name" => "Netto 15"],
+						]
+					],
+					[
+						"days_to_pay" => 30,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 30"],
+							["locale" => "FI", "name" => "30 pv netto"],
+							["locale" => "SV", "name" => "Netto 30"],
+						]
+					],
+					[
+						"days_to_pay" => 60,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 60"],
+							["locale" => "FI", "name" => "60 pv netto"],
+							["locale" => "SV", "name" => "Netto 60"],
+						]
+					],
+					[
+						"days_to_pay" => 90,
+						"translations" => [
+							["locale" => "EN", "name" => "Net 90"],
+							["locale" => "FI", "name" => "90 pv netto"],
+							["locale" => "SV", "name" => "Netto 90"],
+						]
+					],
+				];
+
+				foreach ($paymentTerms as $term) {
+					$paymentTerm = InvoicePaymentTerm::create([
+						"days_to_pay" => $term["days_to_pay"],
+						"domain" => $request->domain,
+					]);
+					
+					$paymentTerm->translations()->createMany($term["translations"]);
+				}
 
 				DB::commit();
 

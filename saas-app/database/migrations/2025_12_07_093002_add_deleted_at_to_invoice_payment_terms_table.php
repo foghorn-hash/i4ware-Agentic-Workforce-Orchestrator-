@@ -13,11 +13,8 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::create('settings', function (Blueprint $table) {
-            $table->id();
-            $table->string('setting_key');
-            $table->string('setting_value');
-            $table->timestamps();
+        Schema::table('invoice_payment_terms', function (Blueprint $table) {
+            $table->softDeletes(); // lisää deleted_at
         });
     }
 
@@ -28,6 +25,8 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('settings');
+        Schema::table('invoice_payment_terms', function (Blueprint $table) {
+            $table->dropSoftDeletes(); // poistaa deleted_at
+        });
     }
 };

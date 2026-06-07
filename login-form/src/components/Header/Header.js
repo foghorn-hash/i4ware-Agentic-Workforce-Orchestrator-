@@ -119,6 +119,9 @@ function Header(props) {
         { text: "chat", link: "/pusher-chat" },
         { text: "timesheet", link: "/timesheet" },
         { text: "cvEditor", link: "/cv-editor" },
+        { text: "customers", link: "/customers", permission: "customers.view" },
+        { text: "invoices", link: "/invoices", permission: "invoices.view" },
+        { text: "purchaseOrders", link: "/purchase-orders", permission: "purchaseorders.view" },
 
         {
           text: "manageUsers",
@@ -236,6 +239,24 @@ function Header(props) {
                   >
                     {t('myProfile')}
                   </NavLink>
+                )}
+                {authState.isLogged && (
+                  <PermissionGate permission={"invoices.view"}>
+                    <NavLink className="Header-nav-link" to="/invoices"
+                      onClick={() => setMobileMenuOpen(false)}>{t('invoices')}</NavLink>
+                  </PermissionGate>
+                )}
+                {authState.isLogged && (
+                  <PermissionGate permission={"purchaseorders.view"}>
+                    <NavLink className="Header-nav-link" to="/purchase-orders"
+                      onClick={() => setMobileMenuOpen(false)}>{t('purchaseOrders')}</NavLink>
+                  </PermissionGate>
+                )}
+                {authState.isLogged && (
+                  <PermissionGate permission={"customers.view"}>
+                    <NavLink className="Header-nav-link" to="/customers"
+                      onClick={() => setMobileMenuOpen(false)}>{t('customers')}</NavLink>
+                  </PermissionGate>
                 )}
                 {authState.isLogged && (
                   <NavLink

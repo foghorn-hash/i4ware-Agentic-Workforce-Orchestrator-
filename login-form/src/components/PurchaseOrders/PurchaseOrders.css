@@ -1,0 +1,19 @@
+.purchase-orders-table {
+  margin-top: 20px;
+}
+
+.purchase-orders-table thead tr th {
+  background-color: #f8f9fa;
+  font-weight: bold;
+}
+
+.purchase-orders-table tbody tr td {
+  vertical-align: middle;
+  color: white !important;
+  background-color: #343a40;
+}
+
+.purchase-orders-table tbody tr:hover {
+  background-color: #495057;
+  cursor: pointer;
+}

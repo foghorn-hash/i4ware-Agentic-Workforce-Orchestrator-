@@ -84,12 +84,10 @@ class TimesheetRowController extends Controller
     // PUT /api/timesheets/{timesheet}/rows/{row}
     public function update(Request $request, Timesheet $timesheet, TimesheetRow $row)
     {
-        unset($data['user_id']); 
-        $row->update($data);
-        
         $this->assertBelongs($row, $timesheet);
         $data = $this->validateRow($request, false);
         $data = $this->sanitize($data);
+        unset($data['user_id']); 
         $row->update($data);
         return response()->json($row);
     }

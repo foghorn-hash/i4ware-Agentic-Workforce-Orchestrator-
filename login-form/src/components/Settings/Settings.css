@@ -1,0 +1,102 @@
+/* Wrapper - pitää napit ja tiedostonimen rivillä ja siistissä rivittäytyksessä mobiilissa */
+.invoice-upload {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;          /* tilaa elementtien väliin */
+  flex-wrap: wrap;       /* rivittyy mobiilissa */
+  margin-top: 0.5rem;
+}
+
+/* Piilotettu natiivi file input (jos ei ole jo inline-stylena) */
+.invoice-upload .file-input {
+  display: none;
+}
+
+/* Korvaava Browse -nappi (Bootstrapin btn-luokkaa voi käyttää rinnalla) */
+.invoice-upload .browse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--bs-gray-300, #ced4da);
+  background: var(--bs-light, #f8f9fa);
+  cursor: pointer;
+  transition: background .12s ease, transform .06s ease;
+  font-size: 0.95rem;
+}
+
+/* Hover & focus */
+.invoice-upload .browse-btn:hover,
+.invoice-upload .browse-btn:focus {
+  background: var(--bs-light-2, #868686);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+/* Tiedostonimi — leikkaa liian pitkät nimet ja näyttää ellipsin */
+.invoice-upload .file-name {
+  display: inline-block;
+  max-width: 40ch;           /* raja pitkä nimi tietylle leveykselle */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  font-size: 0.95rem;
+  color: #666666;
+}
+
+/* Pieni tekstityyli, jos ei tiedostoa valittu */
+.invoice-upload .file-name.empty {
+  color: #6c757d;            /* bootstrap secondary text color */
+  font-style: italic;
+}
+
+/* Upload-nappi sijoitellaan uudelle riville mobiilissa, desktopissa voi olla samalla rivillä */
+.invoice-upload .upload-btn {
+  margin-top: 0.5rem;
+}
+
+/* Jos haluat upload-napin oikealle reunalle desktopissa */
+@media (min-width: 576px) {
+  .invoice-upload {
+    gap: 1rem;
+  }
+  .invoice-upload .upload-btn {
+    margin-left: auto; /* työntää upload-napin oikealle, jos wrapper on leveä */
+    margin-top: 0;
+  }
+}
+
+.form-label-price {
+    font-weight: 500;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    margin-left: 0 !important;
+    display: block;
+}
+
+.form-control-price {
+    width: 100%;
+    margin-left: 0 !important;
+    padding: 0.375rem 0.75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #212529;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+    transition: border-color .15s ease-in-out,box-shadow .15s ease-in-out;
+}
+
+.settings-clear {
+    height: 1rem;
+    clear: both;
+}
+
+.terms-table th, .terms-table td {
+    text-align: left;
+    vertical-align: middle;
+    color: #ffffff !important;
+}

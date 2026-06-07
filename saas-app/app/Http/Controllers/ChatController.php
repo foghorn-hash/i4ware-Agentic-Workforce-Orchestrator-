@@ -93,13 +93,13 @@ class ChatController extends Controller
             ]
         ], 200);
     }
-    
+
     /**
      * Retrieve the latest chat messages.
      *
      * @return \Illuminate\Http\Response
      */
-    
+
     public function getMessages(Request $request)
     {
         $user = Auth::user();
@@ -152,12 +152,12 @@ class ChatController extends Controller
     {
         $username = $request->username;
         $isSpeech = $request->isSpeech;
-    
+
         broadcast(new UserSpeech($username, $isSpeech))->toOthers();
-    
+
         return response()->json(['status' => 'success', 'message' => $isSpeech]);
     }
-    
+
     public function uploadMessage(Request $request)
     {
         // Get the authenticated user's ID
@@ -200,19 +200,20 @@ class ChatController extends Controller
         return response()->json(['message' => 'Image uploaded successfully'], 201);
     }
 
-    public function captureUpload(Request $request){
+    public function captureUpload(Request $request)
+    {
 
         $user = Auth::user();
-    
+
         $file = $request->file;
-    
-        if($file){
-            $filename = uniqid() . '.jpg';    
-            
+
+        if ($file) {
+            $filename = uniqid() . '.jpg';
+
             $imageData = file_get_contents($file);
             Storage::put('public/uploads/' . $filename, $imageData);
-            $path = 'storage/uploads/'.$filename;
-            
+            $path = 'storage/uploads/' . $filename;
+
             // Create new message
             $message = new MessageModel();
             $message->username = $user->name;
@@ -236,7 +237,7 @@ class ChatController extends Controller
                 'message' => 'Your profile web-cam photo is not saved successfully.',
             ], 200);
         }
-      
+
     }
 
     private function analyzeMessage($messageText)
@@ -269,7 +270,8 @@ class ChatController extends Controller
         return response()->json(['response' => $response]);
     }
 
-    public function generateImage(Request $request) {
+    public function generateImage(Request $request)
+    {
 
         $prompt = $request->input('prompt');
         $language = $request->input('language', 'en'); // Default to English if not specified
@@ -319,11 +321,17 @@ class ChatController extends Controller
             $filename = $data['filename'] ?? null;
             $type = $data['type'] ?? 'text';
 
-            $message->username = "AI";
-            $message->user_id = null;
+            $sender = $data['username'] ?? 'AI';
+            $message->username = $sender;
+            if ($sender !== 'AI') {
+                $message->user_id = $user->id;
+                $message->gender = $user->gender ?? 'male';
+            } else {
+                $message->user_id = null;
+                $message->gender = 'male';
+            }
             $message->domain = $user->domain;
             $message->message = $prompt;
-            $message->gender = "male";
             $message->file_path = $filename ? ('storage/' . $filename) : null;
             $assetBase = rtrim(
                 env(
@@ -358,7 +366,7 @@ class ChatController extends Controller
                 'download_link' => $message->download_link,
             ],
         ], 200);
-}
+    }
     public function thinking(Request $request)
     {
         $user = "AI";
@@ -395,7 +403,7 @@ class ChatController extends Controller
             // Move the uploaded file to the storage directory
             $path = $file->storeAs('public/uploads', $filename);
 
-            $path_to_store_in_db = 'storage/uploads/'.$filename;
+            $path_to_store_in_db = 'storage/uploads/' . $filename;
 
             // Create a new record in the database
             $message = new MessageModel();
@@ -408,7 +416,7 @@ class ChatController extends Controller
             $message->save();
 
             // Trigger an event for the new message
-             event(new Message($message));
+            event(new Message($message));
 
             return response()->json(['message' => 'Media uploaded successfully'], 200);
         }
@@ -777,22 +785,57 @@ class ChatController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->post('https://api.openai.com/v1/realtime/sessions', [
+            // Use the GA endpoint for generating client secrets / ephemeral keys
+            $response = $client->post('https://api.openai.com/v1/realtime/client_secrets', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
-                    'Content-Type'  => 'application/json',
+                    'Content-Type' => 'application/json',
                 ],
                 'json' => [
-                    'model' => 'gpt-4o-realtime-preview',
-                    'voice' => 'alloy',
+                    'session' => [
+                        'type' => 'realtime',
+                        'model' => 'gpt-realtime-2',
+                    ]
                 ],
             ]);
 
-            return response()->json(json_decode($response->getBody(), true));
+            $data = json_decode($response->getBody(), true);
+
+            // Wrap the client secret in the format expected by the frontend
+            if (isset($data['value']) && !isset($data['client_secret'])) {
+                $data['client_secret'] = [
+                    'value' => $data['value']
+                ];
+            }
+
+            return response()->json($data);
+
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $statusCode = $e->getResponse()->getStatusCode();
+            $responseBody = (string) $e->getResponse()->getBody();
+
+            Log::error('OpenAI session client error', [
+                'status_code' => $statusCode,
+                'message' => $e->getMessage(),
+                'response_body' => $responseBody,
+                'api_key_present' => !empty(env('OPENAI_API_KEY')),
+            ]);
+
+            return response()->json([
+                'error' => 'OpenAI API error',
+                'status' => $statusCode,
+                'message' => json_decode($responseBody, true) ?? $responseBody
+            ], $statusCode);
 
         } catch (\Exception $e) {
-            Log::error('OpenAI session error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create OpenAI session'], 500);
+            Log::error('OpenAI session error', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+            return response()->json([
+                'error' => 'Failed to create OpenAI session',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 

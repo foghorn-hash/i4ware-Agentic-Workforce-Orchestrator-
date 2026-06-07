@@ -13,7 +13,8 @@ class Settings extends Model
 
     protected $fillable = [
         'setting_key',
-        'setting_value'
+        'setting_value',
+        'domain',
     ];
 
 }

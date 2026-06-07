@@ -86,11 +86,11 @@ const PusherChat = () => {
 
   const startRealtimeConversation = async () => {
     try {
-      // Fetch session token from Node.js backend
+      // Fetch session token from backend
       console.log('Fetching OpenAI session from /api/openai-session');
-      const resp = await fetch(`${process.env.REACT_APP_SERVER_URL}/api/chat/openai-session`, {
+      const resp = await fetch(`${API_BASE_URL}/api/chat/openai-session`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('login_access_token')}`,
+          'Authorization': `Bearer ${localStorage.getItem(ACCESS_TOKEN_NAME)}`,
         }
       });
       if (!resp.ok) {
@@ -98,7 +98,7 @@ const PusherChat = () => {
         throw new Error(`HTTP ${resp.status}: ${text.substring(0, 200)}`);
       }
       const session = await resp.json();
-      const ephemeralKey = session?.client_secret?.value || session?.client_secret;
+      const ephemeralKey = session?.client_secret?.value || session?.client_secret || session?.value;
 
       if (!ephemeralKey) {
         throw new Error(`No client_secret in session response: ${JSON.stringify(session)}`);
@@ -107,6 +107,51 @@ const PusherChat = () => {
       console.log('Session obtained, creating WebRTC connection...');
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
+
+      // Create client-side data channel for OpenAI events (required by GA WebRTC protocol)
+      const dc = pc.createDataChannel("oai-events");
+      dataChannelRef.current = dc;
+
+      dc.onopen = () => {
+        console.log('Success: Data channel opened, readyState:', dc.readyState);
+        const systemMsg = {
+          type: 'session.update',
+          session: {
+            instructions: `You are a helpful assistant. Respond in the same language the user speaks, only languages will be English, Finnish or Swedish. Be concise. Always use markdown formatting and wrap any code snippets in triple backticks with the language prefix (e.g. \`\`\`php ... \`\`\`).`,
+            voice: 'alloy',
+            modalities: ['text', 'audio'],
+            input_audio_transcription: {
+              model: 'whisper-1'
+            }
+          }
+        };
+        try {
+          dc.send(JSON.stringify(systemMsg));
+          console.log('Success: Sent session update');
+        } catch (err) {
+          console.log('Error: Could not send session update:', err);
+        }
+      };
+
+      dc.onmessage = (m) => {
+        console.log('Raw datachannel message received:', m.data?.substring?.(0, 100));
+        try {
+          const data = JSON.parse(m.data);
+          console.log('Success: Parsed to JSON:', data.type);
+          handleOpenAIEvent(data);
+        } catch (err) {
+          console.log('Warning: Data channel message (not JSON):', m.data?.substring?.(0, 200));
+        }
+      };
+
+      dc.onerror = (err) => {
+        console.error('Error: Data channel error:', err);
+      };
+
+      dc.onclose = () => {
+        console.log('Warning: Data channel closed');
+        dataChannelRef.current = null;
+      };
 
       // play remote audio
       pc.ontrack = (event) => {
@@ -133,9 +178,12 @@ const PusherChat = () => {
           const systemMsg = {
             type: 'session.update',
             session: {
-              instructions: `You are a helpful assistant. Respond in the same language the user speaks, only languages will be English, Finnish or Swedish. Be concise.`,
+              instructions: `You are a helpful assistant. Respond in the same language the user speaks, only languages will be English, Finnish or Swedish. Be concise. Always use markdown formatting and wrap any code snippets in triple backticks with the language prefix (e.g. \`\`\`php ... \`\`\`).`,
               voice: 'alloy',
-              modalities: ['text', 'audio']
+              modalities: ['text', 'audio'],
+              input_audio_transcription: {
+                model: 'whisper-1'
+              }
             }
           };
           try {
@@ -194,13 +242,19 @@ const PusherChat = () => {
 
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = 'en-US,fi-FI,sv-SE';
+
+        const langMap = {
+          fi: 'fi-FI',
+          en: 'en-US',
+          sv: 'sv-SE'
+        };
+        recognition.lang = langMap[i18n.language] || 'fi-FI';
 
         recognition.onstart = () => {
           console.log('Web Speech API started');
         };
 
-        recognition.onresult = (event) => {
+        recognition.onresult = async (event) => {
           let interimTranscript = '';
           let finalTranscript = '';
 
@@ -213,18 +267,32 @@ const PusherChat = () => {
             }
           }
 
-          // Display final transcript in chat
-          if (finalTranscript && finalTranscript !== lastUserTranscriptRef.current) {
-            console.log('Success: User said:', finalTranscript);
-            const userMessage = {
-              username: username,
-              message: finalTranscript.trim(),
-              generate: false,
-              created_at: new Date().toISOString(),
-            };
-            setMessages((prev) => [...prev, userMessage]);
-            saveMessageToDatabase(userMessage);
-            lastUserTranscriptRef.current = finalTranscript;
+          // Display final transcript in chat (with normalized comparison to prevent duplicates)
+          if (finalTranscript) {
+            const normNew = finalTranscript.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+            const normPrev = lastUserTranscriptRef.current ? lastUserTranscriptRef.current.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+
+            if (normNew && normNew !== normPrev) {
+              console.log('Success: User said (Web Speech):', finalTranscript);
+              console.log('Web Speech API final transcript:', finalTranscript.trim());
+              const userMessage = {
+                username: username,
+                message: finalTranscript.trim(),
+                generate: false,
+                created_at: new Date().toISOString(),
+              };
+              const savedUser = await saveMessageToDatabase(userMessage);
+              if (savedUser) {
+                setMessages((prev) => {
+                  const existingIds = new Set(prev.map((m) => m.id).filter(Boolean));
+                  if (savedUser.id && existingIds.has(savedUser.id)) return prev;
+                  return [...prev, savedUser];
+                });
+              } else {
+                setMessages((prev) => [...prev, userMessage]);
+              }
+              lastUserTranscriptRef.current = finalTranscript;
+            }
           }
         };
 
@@ -254,9 +322,9 @@ const PusherChat = () => {
       await pc.setLocalDescription(offer);
       console.log('SDP offer created');
 
-      // send SDP offer to OpenAI Realtime endpoint using ephemeral key
+      // send SDP offer to OpenAI Realtime endpoint using ephemeral key (GA endpoint)
       console.log('Sending SDP offer to OpenAI realtime...');
-      const sdpResp = await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', {
+      const sdpResp = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${ephemeralKey}`,
@@ -289,19 +357,35 @@ const PusherChat = () => {
       console.log('OpenAI Event:', data.type);
       console.log('   Full data:', JSON.stringify(data).substring(0, 300));
 
-      // Handle transcript from user input
+      // Handle speech started/stopped events from user audio to trigger Pusher user-speech indicator
+      if (data.type === 'input_audio_buffer.speech_started') {
+        console.log('User speech started');
+        sendSpeechStatus(true);
+      }
+      if (data.type === 'input_audio_buffer.speech_stopped') {
+        console.log('User speech stopped');
+        sendSpeechStatus(false);
+      }
+
+      // Handle transcript from user input (with normalized comparison to prevent duplicates)
       if (data.type === 'conversation.item.input_audio_transcription.completed') {
         const transcript = data?.transcript;
         if (transcript) {
-          console.log('Success: User transcript:', transcript);
-          const userMessage = {
-            username: username,
-            message: transcript,
-            generate: false,
-            created_at: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, userMessage]);
-          saveMessageToDatabase(userMessage);
+          const normNew = transcript.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+          const normPrev = lastUserTranscriptRef.current ? lastUserTranscriptRef.current.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+
+          if (normNew && normNew !== normPrev) {
+            console.log('Success: User transcript (OpenAI event):', transcript);
+            const userMessage = {
+              username: username,
+              message: transcript.trim(),
+              generate: false,
+              created_at: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, userMessage]);
+            saveMessageToDatabase(userMessage);
+            lastUserTranscriptRef.current = transcript;
+          }
         }
       }
 
@@ -341,25 +425,73 @@ const PusherChat = () => {
         }
       }
 
+      // Handle GA streaming text and audio transcription deltas
+      if (data.type === 'response.text.delta' ||
+        data.type === 'response.audio_transcript.delta' ||
+        data.type === 'response.output_audio_transcript.delta') {
+        if (typeof data.delta === 'string') {
+          realtimeTextAccumRef.current += data.delta;
+          console.log('Text delta:', data.delta);
+        } else if (data.delta?.text) {
+          realtimeTextAccumRef.current += data.delta.text;
+          console.log('Text delta:', data.delta.text);
+        }
+      }
+
+      // Handle GA/legacy transcription complete event to overwrite accumulated deltas if possible
+      if (data.type === 'response.audio_transcript.done' || data.type === 'response.output_audio_transcript.done') {
+        if (data.transcript) {
+          console.log('Transcript done event:', data.transcript);
+          realtimeTextAccumRef.current = data.transcript;
+        }
+      }
+
       // Handle response creation (start of response)
       if (data.type === 'response.created') {
         console.log('Response started');
         realtimeTextAccumRef.current = ''; // Reset accumulator
+        setIsThinking(true);
+        sendThinkingStatus(true);
       }
 
       // Handle when response is fully done
       if (data.type === 'response.done') {
-        const fullText = realtimeTextAccumRef.current.trim();
+        setIsThinking(false);
+        sendThinkingStatus(false);
+        let fullText = realtimeTextAccumRef.current.trim();
+
+        // Fallback: If accumulator is empty, extract text/audio transcripts from output content
+        if (!fullText) {
+          const output = data.response?.output;
+          if (Array.isArray(output)) {
+            output.forEach((item) => {
+              if (Array.isArray(item.content)) {
+                item.content.forEach((contentPart) => {
+                  if (contentPart.type === 'text' && contentPart.text) {
+                    fullText += contentPart.text;
+                  } else if (contentPart.type === 'audio' && contentPart.transcript) {
+                    fullText += contentPart.transcript;
+                  }
+                });
+              }
+            });
+          }
+          fullText = fullText.trim();
+        }
+
         if (fullText) {
           console.log('Response complete:', fullText);
-          const aiMessage = {
-            username: 'AI',
-            message: fullText,
+          const highlightedHTML = fullText;
+          const aiResponseMessage = {
+            username: "AI",
             generate: false,
+            message: highlightedHTML,
             created_at: new Date().toISOString(),
+            original_prompt: message, // Include original prompt for translation
+            language: i18n.language, // Include language
           };
-          setMessages((prev) => [...prev, aiMessage]);
-          saveMessageToDatabase(aiMessage);
+          setMessages((prev) => [...prev, aiResponseMessage]);
+          saveMessageToDatabase(aiResponseMessage);
         }
         realtimeTextAccumRef.current = '';
       }
@@ -370,14 +502,17 @@ const PusherChat = () => {
         if (data.content_block?.type === 'text' && realtimeTextAccumRef.current.trim()) {
           const fullText = realtimeTextAccumRef.current.trim();
           console.log('Response complete:', fullText);
-          const aiMessage = {
-            username: 'AI',
-            message: fullText,
+          const highlightedHTML = fullText;
+          const aiResponseMessage = {
+            username: "AI",
             generate: false,
+            message: highlightedHTML,
             created_at: new Date().toISOString(),
+            original_prompt: message, // Include original prompt for translation
+            language: i18n.language, // Include language
           };
-          setMessages((prev) => [...prev, aiMessage]);
-          saveMessageToDatabase(aiMessage);
+          setMessages((prev) => [...prev, aiResponseMessage]);
+          saveMessageToDatabase(aiResponseMessage);
           realtimeTextAccumRef.current = '';
         }
       }
@@ -715,9 +850,23 @@ const PusherChat = () => {
     const channel = pusher.subscribe(authArray.domain + "_chat");
 
     channel.bind("message", (newMessage) => {
-      //setMessages((prevMessages) => [newMessage, ...prevMessages]);
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
-      //fetchMessages();
+      setMessages((prevMessages) => {
+        // If message is already in list with the same ID, ignore
+        if (prevMessages.some((msg) => msg.id && msg.id === newMessage.id)) {
+          return prevMessages;
+        }
+        // If there is an unsaved local message (no ID) with the same username and message text,
+        // replace it with the new message that has the database ID
+        const matchedIndex = prevMessages.findIndex(
+          (msg) => !msg.id && msg.username === newMessage.username && msg.message === newMessage.message
+        );
+        if (matchedIndex !== -1) {
+          const updated = [...prevMessages];
+          updated[matchedIndex] = newMessage;
+          return updated;
+        }
+        return [...prevMessages, newMessage];
+      });
     });
 
     channel.bind("user-typing", ({ username: typingUsername, isTyping }) => {
@@ -882,6 +1031,19 @@ const PusherChat = () => {
     ).catch((error) => console.error("Error sending speech status", error));
   };
 
+  const sendThinkingStatus = async (isThinking) => {
+    await Axios.post(
+      `${API_BASE_URL}/api/chat/thinking`,
+      { username: "AI", isThinking },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem(ACCESS_TOKEN_NAME)}`,
+        },
+      }
+    ).catch((error) => console.error("Error sending thinking status", error));
+  };
+
   const submitMessage = async (e) => {
     e.preventDefault();
     try {
@@ -890,24 +1052,26 @@ const PusherChat = () => {
         : isGenerateEnabled
           ? "generate_image"
           : null;
-      // Send the actual message to the backend
-      const response = await Axios.post(
-        `${API_BASE_URL}/api/chat/messages`,
-        { username, message, type: optionSelected },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem(ACCESS_TOKEN_NAME)}`,
-          },
-        }
-      );
-      //const savedMessage = response.data.message;
-      //console.log("Backend message:", savedMessage);
-      // Use the backend-confirmed message (with id, gender, etc.)
-      //setMessages((prevMessages) => [...prevMessages, savedMessage]);
+
+      const messageText = message;
       // Clear the message box
       setMessage("");
       sendTypingStatus(false);
+
+      // Save user message in submitMessage ONLY if AI is not enabled (AI response generation handles saving its own prompt)
+      if (!isAiEnabled) {
+        await Axios.post(
+          `${API_BASE_URL}/api/chat/messages`,
+          { username, message: messageText, type: optionSelected },
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem(ACCESS_TOKEN_NAME)}`,
+            },
+          }
+        );
+      }
+
       if (isAiEnabled) {
         setIsThinking(true);
         await Axios.post(
@@ -922,7 +1086,7 @@ const PusherChat = () => {
             },
           }
         );
-        await generateResponse();
+        await generateResponse(messageText);
       } else if (isGenerateEnabled) {
         setIsThinking(true);
         await Axios.post(
@@ -1159,7 +1323,8 @@ const PusherChat = () => {
     }
   };
 
-  const generateResponse = async () => {
+  const generateResponse = async (userPromptText) => {
+    const textToUse = userPromptText || message;
     let fullPrompt;
     if (isRohtoEnabled) {
       fullPrompt = `
@@ -1168,13 +1333,31 @@ const PusherChat = () => {
       ${t('rohto_history_label')}: ${history}
       ${t('rohto_goal_label')}: ${goal}
       ${t('rohto_expectation_label')}: ${expectation}
-      ${t('rohto_for_prompt')}: ${message}
+      ${t('rohto_for_prompt')}: ${textToUse}
     `.trim();
     } else {
       // If ROHTO is disabled, just send the message as the prompt
-      fullPrompt = message;
+      fullPrompt = textToUse;
     }
     try {
+      // Save logged-in user speech/message to database first
+      if (userPromptText) {
+        const userMessage = {
+          username: username,
+          message: userPromptText,
+          generate: false,
+          created_at: new Date().toISOString(),
+        };
+        const savedUser = await saveMessageToDatabase(userMessage);
+        if (savedUser) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id).filter(Boolean));
+            if (savedUser.id && existingIds.has(savedUser.id)) return prev;
+            return [...prev, savedUser];
+          });
+        }
+      }
+
       const response = await Axios.post(
         `${API_BASE_URL}/api/chat/generate-response`,
         { prompt: fullPrompt, language: i18n.language },
@@ -1311,7 +1494,7 @@ const PusherChat = () => {
         message: codeDetected
           ? resp.data.message
           : fileReadyMessageByType[generateFileType] ||
-            "File generated. Click download.",
+          "File generated. Click download.",
         created_at: new Date().toISOString(),
         filename: filename,
         type: codeDetected ? "text" : generateFileType,
@@ -1353,7 +1536,7 @@ const PusherChat = () => {
             },
           }
         );
-      } catch (e) {}
+      } catch (e) { }
     }
   };
 

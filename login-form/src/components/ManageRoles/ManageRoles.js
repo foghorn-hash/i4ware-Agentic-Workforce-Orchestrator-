@@ -1,26 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import "./ManageRoles.css";
 import { withRouter } from 'react-router-dom';
 import { Button } from 'react-bootstrap';
 import request from '../../utils/Request';
 import { AuthContext } from '../../contexts/auth.contexts';
-import LOADING from '../../tube-spinner.svg';
-import { useTranslation } from 'react-i18next';
+import Spinner from "react-bootstrap/Spinner";
+import Alert from "react-bootstrap/Alert";
+import { API_DEFAULT_LANGUAGE } from '../../constants/apiConstants';
+import { useTranslation } from "react-i18next";
 
-const ROLES_PER_PAGE = 50;
 
 function ManageRoles(props) {
   const { t, i18n } = useTranslation();
-  const { authState, authActions } = React.useContext(AuthContext);
-
+  const {authState, authActions} = React.useContext(AuthContext);
   const [roles, setRoles] = useState([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [hasPrevious, setHasPrevious] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
-  const totalPages = Math.max(1, Math.ceil(total / ROLES_PER_PAGE));
-
-  // Sync language from URL
+  const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+ // Sync language from URL
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const langFromUrl = urlParams.get("lang");
@@ -30,54 +30,78 @@ function ManageRoles(props) {
   }, [i18n]);
 
   useEffect(() => {
-    fetchRoles(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+    fetchRoles(1);
+  }, [searchQuery]);
 
-  const fetchRoles = (pageNumber) => {
+  const fetchRoles = (pageNum) => {
+    if (isLoading) return;
+
     setIsLoading(true);
-    request()
-      .get(`/api/manage/roles?page=${pageNumber}&per_page=${ROLES_PER_PAGE}`)
-      .then((res) => {
-        const responseData = res.data;
-        if (Array.isArray(responseData)) {
-          setRoles(responseData);
-          setTotal(
-            responseData.length < ROLES_PER_PAGE
-              ? (pageNumber - 1) * ROLES_PER_PAGE + responseData.length
-              : pageNumber * ROLES_PER_PAGE + 1
-          );
-        } else {
-          setRoles(responseData.data ?? []);
-          setTotal(responseData.total ?? 0);
-        }
+    const params = new URLSearchParams();
+    params.append('page', pageNum);
+    if (searchQuery) {
+      params.append('search', searchQuery);
+    }
+    request().get(`/api/manage/roles?${params}`)
+      .then(res => {
+        const newRoles = res.data;
+        setRoles(newRoles || []);
+        setHasMore(newRoles && newRoles.length >= 10);
+        setHasPrevious(pageNum > 1);
       })
-      .catch((error) => {
+      .catch(error => {
         console.error("Error loading roles:", error);
+        setError(t("error_fetching_roles") || error);
       })
       .finally(() => {
         setIsLoading(false);
       });
   };
 
-  const refreshRoles = () => fetchRoles(page);
+  const goToNextPage = () => {
+    if (hasMore && !isLoading) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchRoles(nextPage);
+    }
+  };
 
-  const removeItem = (role) => {
+  const goToPreviousPage = () => {
+    if (hasPrevious && !isLoading) {
+      const prevPage = page - 1;
+      setPage(prevPage);
+      fetchRoles(prevPage);
+    }
+  };
+
+  const handleSearch = (value) => {
+    setSearchQuery(value);
+    setPage(1);
+    setHasMore(true);
+    setHasPrevious(false);
+  };
+
+  const removeItem = item => {
     request()
-      .get("/api/manage/role/" + role.id)
-      .then(() => refreshRoles());
-  };
+      .get("/api/manage/role/"+item.id)
+      .then(res => {
+        setPage(1);
+        setHasMore(true);
+        setHasPrevious(false);
+        fetchRoles(1);
+      })
+  }
 
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) setPage(newPage);
-  };
-
-  if (isLoading && roles.length === 0) {
+  if (roles.length === 0 && !isLoading) {
     return (
-      <div className="loading-screen">
-        <img src={LOADING} alt="Loading..." />
+      <div className="text-center mt-4">
+        <Spinner animation="border" />
       </div>
     );
+  }
+
+  if (error) {
+    return <Alert variant="danger">{error}</Alert>;
   }
 
   return (
@@ -87,88 +111,84 @@ function ManageRoles(props) {
           {t("add")}
         </Button>
       </div>
-
+      <div style={{ marginBottom: '15px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <input
+          type="text"
+          placeholder={t("searchRolesPlaceholder")}
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.target.value)}
+          className="form-control"
+          style={{ maxWidth: '300px' }}
+        />
+      </div>
       <div className="mt-3">
-        <div className="table-header-roles">
-          <div className="column-actions-roles">#</div>
-          <div className="column-actions-roles">{t("name")}</div>
-          <div className="column-actions-roles">{t("domain")}</div>
-          <div className="column-actions-roles"></div>
-        </div>
-
-        <div className="table-body-roles">
-          {isLoading ? (
-            <div className="loading-screen">
-              <img src={LOADING} alt="Loading..." />
+          <div className="table-header-roles">
+            <div className="column-actions-roles">#</div>
+            <div className="column-actions-roles">{t("rolename")}</div>
+            <div className="column-actions-roles">{t("domain")}</div>
+            <div className="column-actions-roles"></div>
+          </div>
+          <div className='table-body-roles'>
+          <div>
+          {roles.map((role, index) => (
+            <div key={role.id + "-mobile"} className="mobile-table-body-roles">
+              <div className="mobile-table-header-roles">
+                <div className="column-actions-roles">#</div>
+                <div className="column-actions-roles">{t("name")}</div>
+                <div className='column-actions-roles'>{t("domain")}</div>
+                <div className="column-actions-roles"></div>
+              </div>
+            <div key={role.id} className="table-row-roles">
+              <div className="column-actions-roles">{index + 1}</div>
+              <div className="column-actions-roles">{role.name}</div>
+              <div className='column-actions-roles'>{role.domain}</div>
+              <div className="column-actions-roles">
+                <Button 
+                  className="btn-info" 
+                  size="sm" 
+                  onClick={() => {
+                    props.history.push({
+                      pathname: "/manage-roles/edit",
+                      state: {
+                        item: role,
+                        from: "edit",
+                      },
+                    });
+                  }}>
+                  {t("edit")}
+                </Button>
+                <Button 
+                  className="mx-2 btn-danger" 
+                  size="sm" 
+                  onClick={() => {
+                    removeItem(role);
+                }}>
+                  {t("remove")}
+                </Button>
+              </div>
             </div>
-          ) : roles.length === 0 ? (
-            <div className="text-center py-4 text-muted">{t("noRolesFound")}</div>
-          ) : (
-            roles.map((role, index) => {
-              const rowNumber = (page - 1) * ROLES_PER_PAGE + index + 1;
-              return (
-                <div className="mobile-table-body-roles" key={role.id}>
-                  <div className="mobile-table-header-roles">
-                    <div className="column-actions-roles">#</div>
-                    <div className="column-actions-roles">{t("name")}</div>
-                    <div className="column-actions-roles">{t("domain")}</div>
-                    <div className="column-actions-roles"></div>
-                  </div>
-                  <div className="table-row-roles">
-                    <div className="column-actions-roles">{rowNumber}</div>
-                    <div className="column-actions-roles">{role.name}</div>
-                    <div className="column-actions-roles">{role.domain}</div>
-                    <div className="column-actions-roles">
-                      <Button
-                        className="btn-info"
-                        size="sm"
-                        onClick={() => {
-                          props.history.push({
-                            pathname: "/manage-roles/edit",
-                            state: { item: role, from: "edit" },
-                          });
-                        }}
-                      >
-                        {t("edit")}
-                      </Button>
-                      <Button
-                        className="mx-2 btn-danger"
-                        size="sm"
-                        onClick={() => removeItem(role)}
-                      >
-                        {t("remove")}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {!isLoading && (
-          <div className="d-flex justify-content-left align-items-center gap-3 mt-3">
-            <Button
-              variant="outline-primary"
-              size="sm"
-              onClick={() => handlePageChange(page - 1)}
-              disabled={page === 1}
+            </div>
+          ))}
+          </div>
+          <div className="pagination-controls" style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px' }}>
+            <Button 
+              onClick={goToPreviousPage} 
+              disabled={!hasPrevious || isLoading}
+              variant="secondary"
             >
               {t("previous")}
             </Button>
-            <span>{t("page")} {page} / {totalPages}</span>
-            <Button
-              variant="outline-primary"
-              size="sm"
-              onClick={() => handlePageChange(page + 1)}
-              disabled={page === totalPages}
+            <span style={{ alignSelf: 'center' }}>Page {page}</span>
+            <Button 
+              onClick={goToNextPage} 
+              disabled={!hasMore || isLoading}
+              variant="secondary"
             >
               {t("next")}
             </Button>
           </div>
-        )}
-
         <div className="spacer"></div>
+        </div>
       </div>
     </>
   );

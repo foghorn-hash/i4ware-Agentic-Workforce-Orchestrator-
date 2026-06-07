@@ -1,0 +1,64 @@
+/* Dark layout for CustomersTable */
+.CustomersTable {
+  background-color: #121212;
+  color: #e0e0e0;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+}
+
+/* Header */
+.CustomersTable thead th {
+  background-color: #1e1e1e;
+  color: #ffffff;
+  padding: 12px;
+  border-bottom: 2px solid #333;
+  border-top: 0;
+}
+
+/* Rows */
+.CustomersTable tbody tr {
+  background-color: #1a1a1a;
+  transition: background-color 0.2s ease;
+}
+
+/* Striped rows */
+.CustomersTable tbody tr:nth-child(even) {
+  background-color: #161616;
+}
+
+/* Hover effect */
+.CustomersTable tbody tr:hover {
+  background-color: #262626 !important;
+}
+
+/* Cells */
+.CustomersTable tbody tr td {
+  padding: 10px;
+  border: 1px solid #2a2a2a;
+}
+
+/* “No Customers found” row */
+.CustomersTable tbody tr td.text-center {
+  text-align: center;
+  vertical-align: middle;
+  padding: 20px;
+  color: #ffffff !important;
+}
+
+/* Boost contrast for status column (optional) */
+.CustomersTable tbody tr td:nth-child(6) {
+  font-weight: 600;
+}
+
+.add-customer {
+  margin-bottom: 1rem;
+}
+
+.customers-row-even td {
+  color: #ffffff !important;
+}
+
+.customers-row-odd td {
+  color: #ffffff !important;
+}

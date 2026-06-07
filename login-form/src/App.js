@@ -29,6 +29,11 @@ import request from "./utils/Request";
 import Timesheet from "./components/Timesheet/Timesheet";
 import CvEditor from "./components/CvEditor/CvEditor";
 import IssueTracker from "./components/IssueTracker/IssueTracker";
+import InvoicesTable from "./components/InvoicesTable/InvoicesTable";
+import CustomersTable from "./components/CustomersTable/CustomersTable";
+import EditCustomer from "./components/CustomersTable/EditCustomer";
+import EditInvoice from "./components/InvoicesTable/EditInvoice";
+import PurchaseOrders from "./components/PurchaseOrders/PurchaseOrders";
 import { useTranslation } from 'react-i18next';
 
 function App() {
@@ -129,6 +134,11 @@ function App() {
                 <PrivateRoute path="/timesheet" component={Timesheet} />
                 <PrivateRoute path="/cv-editor" component={CvEditor} />
                 <PrivateRoute path="/issue-tracker" component={IssueTracker} />
+                <PrivateRoute path="/customer/edit/:id" component={EditCustomer} />
+                <PrivateRoute path="/invoice/edit/:id" component={EditInvoice} />
+                <PrivateRoute path="/invoices" component={InvoicesTable} />
+                <PrivateRoute path="/purchase-orders" component={PurchaseOrders} />
+                <PrivateRoute path="/customers" component={CustomersTable} />
               </Switch>
             </Container>
           </AuthProvider>

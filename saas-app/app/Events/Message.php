@@ -25,8 +25,13 @@ class Message implements ShouldBroadcast
 
     public function broadcastOn()
     {
-        $user = Auth::user();
-        return new Channel($user->domain . '_chat');
+        $domain = null;
+        if (is_object($this->message) && isset($this->message->domain)) {
+            $domain = $this->message->domain;
+        } elseif (Auth::user()) {
+            $domain = Auth::user()->domain;
+        }
+        return new Channel($domain . '_chat');
     }
 
     public function broadcastAs()

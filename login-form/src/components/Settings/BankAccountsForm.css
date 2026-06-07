@@ -1,0 +1,126 @@
+/* PankkitilitForm.css - päivitetty ja parannettu tummalle pohjalle */
+
+.bank-accounts-form {
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+  padding: 2.5rem;
+  border-radius: 10px;
+  width: 100%;
+  margin: 2rem auto;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.bank-accounts-form h2 {
+  margin-bottom: 2rem;
+  font-size: 1.75rem;
+  text-align: left;
+  color: #ffffff;
+}
+
+.bank-accounts-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.bank-accounts-fields .field {
+  display: flex;
+  flex-direction: column;
+}
+
+.bank-accounts-fields label {
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  color: #cfcfcf;
+}
+
+.bank-accounts-fields input {
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background-color: #2a2a2a;
+  color: #f0f0f0;
+  transition: all 0.2s;
+}
+
+.bank-accounts-fields input:focus {
+  outline: none;
+  border-color: #6c63ff;
+  box-shadow: 0 0 6px rgba(108, 99, 255, 0.5);
+}
+
+.bank-accounts-fields .field input.bank-accounts-label-input-red {
+  border-color: #ff4d4d;
+}
+
+.bank-accounts-fields .field input.bank-accounts-label-input-gray {
+  border-color: #555;
+}
+
+.bank-accounts-fields .error-text {
+  color: #ff4d4d;
+  font-size: 0.85rem;
+  margin-top: 0.3rem;
+}
+
+.bank-accounts-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.bank-accounts-buttons button {
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.bank-accounts-buttons button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bank-accounts-buttons button:first-child {
+  background-color: #6c63ff;
+  color: #fff;
+}
+
+.bank-accounts-buttons button:first-child:hover:not(:disabled) {
+  background-color: #574fd6;
+  transform: translateY(-1px);
+}
+
+.bank-accounts-buttons button:last-child {
+  background-color: #444;
+  color: #f0f0f0;
+  border: 1px solid #666;
+}
+
+.bank-accounts-buttons button:last-child:hover {
+  background-color: #555;
+  transform: translateY(-1px);
+}
+
+.bank-accounts-buttons .message-error {
+  color: #ff4d4d;
+  margin-top: 0.75rem;
+}
+
+.bank-accounts-buttons .message-success {
+  color: #4caf50;
+  margin-top: 0.75rem;
+}
+
+/* Lisää responsiivisuutta */
+@media (max-width: 600px) {
+  .bank-accounts-fields {
+    grid-template-columns: 1fr;
+  }
+}

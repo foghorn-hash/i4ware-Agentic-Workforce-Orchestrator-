@@ -327,13 +327,13 @@ const MessageList = ({
             <div key={index} className="message">
               <div className="date-line">
                 {checkDate(
-                  new Date(msg.formatted_created_at).toLocaleDateString()
+                  new Date(msg.formatted_created_at || msg.created_at).toLocaleDateString()
                 )}
               </div>
 
               <div className="message-date">
                 <strong>{msg.username}: </strong>
-                <i>{new Date(msg.formatted_created_at).toLocaleTimeString()}</i>
+                <i>{new Date(msg.formatted_created_at || msg.created_at).toLocaleTimeString()}</i>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <button

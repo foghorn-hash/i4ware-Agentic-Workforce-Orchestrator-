@@ -16,6 +16,9 @@ use App\Http\Controllers\WordBankController;
 use App\Http\Controllers\ExcelBankController;
 use App\Http\Controllers\IssueTrackerController;
 use App\Http\Controllers\CvController;
+use App\Http\Controllers\InvoicesController;
+use App\Http\Controllers\CustomersController;
+use App\Http\Controllers\PurchaseOrdersController;
 
 /*
 |--------------------------------------------------------------------------
@@ -55,6 +58,8 @@ Route::prefix('manage')->group(function () {
 	Route::delete('/domains/{id}', [ProfileController::class, 'removeDomain'])->name('manage.removeDomain');
 	Route::get('/settings', [ProfileController::class, 'settings'])->name('manage.settings');
 	Route::post('/updateSettings', [ProfileController::class, 'updateSettings'])->name('manage.updateSettings');
+	Route::post('/upload-invoice-template', [ProfileController::class, 'uploadTemplate'])->name('manage.upload-invoice-template');
+	Route::get('/template-exists', [ProfileController::class, 'templateExists'])->name('manage.templateExists');
 
 	Route::get('/permissions', [ProfileController::class, 'permissions'])->name('manage.permissions');
 	Route::get('/role/{id}', [ProfileController::class, 'roleDelete'])->name('manage.removeRole');
@@ -67,6 +72,17 @@ Route::prefix('manage')->group(function () {
 	Route::get('/myprofile', [ProfileController::class, 'myprofile'])->name('manage.myprofile');
 	Route::post('/myprofile', [ProfileController::class, 'myprofileSave'])->name('manage.myprofileSave');
 	Route::post('/capture-upload', [ProfileController::class, 'captureUpload'])->name('manage.captureUpload');
+	Route::post('/update-invoice-start-number', [ProfileController::class, 'updateInvoiceStartNumber'])->name('manage.updateInvoiceStartNumber');
+	Route::get('/get-invoice-start-number', [ProfileController::class, 'getInvoiceStartNumber'])->name('manage.getInvoiceStartNumber');
+
+	Route::get('/bank-accounts', [ProfileController::class, 'getBankAccounts'])->name('manage.getBankAccounts');
+    Route::post('/bank-accounts', [ProfileController::class, 'updateBankAccounts'])->name('manage.updateBankAccounts');
+	Route::group(['prefix' => 'i18n'], function ($router) {
+		Route::get('/payment-terms', [ProfileController::class, 'invoicePaymentTerms'])->name('manage.i18n.invoicePaymentTerms');
+		Route::post('/payment-terms', [ProfileController::class, 'addInvoicePaymentTerms'])->name('manage.i18n.addInvoicePaymentTerms');
+		Route::put('/payment-terms/{id}', [ProfileController::class, 'updateInvoicePaymentTerms'])->name('manage.i18n.updateInvoicePaymentTerms');
+		Route::delete('/payment-terms', [ProfileController::class, 'deleteInvoicePaymentTerms'])->name('manage.i18n.deleteInvoicePaymentTerms');
+	});
 });
 
 Route::prefix('stl')->group(function () {
@@ -174,4 +190,41 @@ Route::prefix('cv')->group(function () {
     Route::get('/',    [CvController::class, 'show']);
     Route::post('/',   [CvController::class, 'store']);
     Route::delete('/', [CvController::class, 'destroy']);
+});
+
+Route::group(['prefix' => 'purchase-orders'], function ($router) {
+
+	Route::get('/index', [PurchaseOrdersController::class, 'index'])->name('purchase-orders.index');
+	Route::post('/store', [PurchaseOrdersController::class, 'store'])->name('purchase-orders.store');
+	Route::get('/show/{id}', [PurchaseOrdersController::class, 'show'])->name('purchase-orders.show');
+	Route::put('/update/{id}', [PurchaseOrdersController::class, 'update'])->name('purchase-orders.update');
+	Route::delete('/destroy/{id}', [PurchaseOrdersController::class, 'destroy'])->name('purchase-orders.destroy');
+});
+
+Route::group(['prefix' => 'customers'], function ($router) {
+
+	Route::get('/index', [CustomersController::class, 'index'])->name('customers.index');
+	Route::post('/store', [CustomersController::class, 'store'])->name('customers.store');
+	Route::get('/show/{id}', [CustomersController::class, 'show'])->name('customers.show');
+	Route::put('/update/{id}', [CustomersController::class, 'update'])->name('customers.update');
+	Route::delete('/destroy/{id}', [CustomersController::class, 'destroy'])->name('customers.destroy');
+	Route::get('/search', [CustomersController::class, 'search'])->name('customers.search');
+
+});
+
+Route::group(['prefix' => 'invoices'], function ($router) {
+
+	Route::get('/index', [InvoicesController::class, 'index'])->name('invoices.index');
+	Route::get('/next-invoice-number', [InvoicesController::class, 'nextInvoiceNumber'])->name('invoices.next-invoice-number');
+	Route::post('/store', [InvoicesController::class, 'store'])->name('invoices.store');
+	Route::get('/show/{id}', [InvoicesController::class, 'show'])->name('invoices.show');
+	Route::put('/update/{id}', [InvoicesController::class, 'update'])->name('invoices.update');
+	Route::delete('/destroy/{id}', [InvoicesController::class, 'destroy'])->name('invoices.destroy');
+	Route::get('/search', [InvoicesController::class, 'search'])->name('invoices.search');
+	Route::post('/{id}/lines/add', [InvoicesController::class, 'addLine'])->name('invoices.lines.add');
+	Route::get('/{id}/lines', [InvoicesController::class, 'getLines'])->name('invoices.lines.get');
+	Route::put('/{id}/lines/update', [InvoicesController::class, 'updateLines'])->name('invoices.lines.update');
+	Route::delete('/{id}/line/delete', [InvoicesController::class, 'deleteLine'])->name('invoices.lines.delete');
+	Route::get('/{id}/download', [InvoicesController::class, 'downloadInvoice'])->name('invoices.download');
+
 });
