@@ -125,6 +125,7 @@ class AuthController extends Controller
 		]);
 
 		Mail::send('emails.resetpassword', ['token' => $token], function ($message) use ($request) {
+			$message->from(env('MAIL_FROM_ADDRESS'), env('MAIL_FROM_NAME'));
 			$message->to($request->email);
 			$message->subject('Reset Password');
 		});
@@ -168,6 +169,12 @@ class AuthController extends Controller
 			->update(['password' => Hash::make($request->password)]);
 
 		DB::table('password_resets')->where(['email' => $request->email])->delete();
+
+		Mail::send('emails.showresetpassword', [], function ($message) use ($request) {
+			$message->from(env('MAIL_FROM_ADDRESS'), env('MAIL_FROM_NAME'));
+			$message->to($request->email);
+			$message->subject('Login with new password');
+		});
 
 		return response()->json([
 			'success' => true,
