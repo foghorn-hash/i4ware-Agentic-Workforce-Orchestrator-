@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./RegistrationForm.css";
 import { API_BASE_URL, APP_RECAPTCHA_SITE_KEY } from "../../constants/apiConstants";
 import { Redirect, withRouter } from "react-router-dom";
@@ -67,6 +67,8 @@ function RegistrationForm(props) {
   const [captchaSuccess, setCaptchaSuccess] = useState(false);
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [errorMessages, setErrorMessages] = useState([]);
+  const [countdown, setCountdown] = useState(null);
+  const countdownRef = useRef(null);
 
   const handleCaptchaChange = (value) => {
     setCaptchaValue(value);       // tallennetaan reCAPTCHA:n token
@@ -139,9 +141,7 @@ function RegistrationForm(props) {
             successMessage: json_parsed.message || t('success_registration'),
           }));
           setLoading(false);
-          setTimeout(() => {
-            redirectToLogin();
-          }, 5000);
+          setCountdown(5);
           setModalIsOpen(true);
         } else {
           const errors = [];
@@ -187,13 +187,45 @@ function RegistrationForm(props) {
     // });
   };
 
-  const closeModal = () => {
+  const closeModal = React.useCallback(() => {
     setModalIsOpen(false);
-  };
+    // Clear the countdown if the user manually closes the modal
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    setCountdown(null);
+  }, []);
 
   const redirectToLogin = () => {
-    props.history.push("/login");
+    window.location.hash = '#/login';
   };
+
+  // Start countdown timer when registration succeeds
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown === 0) {
+      redirectToLogin();
+      return;
+    }
+    countdownRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownRef.current);
+          countdownRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown === null ? null : countdown === 0 ? 0 : 'running']);
 
   if (authState.isLogged) {
     return <Redirect to={"/home"}></Redirect>;
@@ -203,13 +235,41 @@ function RegistrationForm(props) {
     <div className={"registeration d-flex justify-content-center "}>
       {/* {loading && <div className={"loading-view"} ></div>} */}
       <div className="card col-12 col-lg-6 register-card mt-2">
-        <div
-          className="alert alert-success mt-2"
-          style={{ display: state.successMessage ? "block" : "none" }}
-          role="alert"
-        >
-          {state.successMessage}
-        </div>
+        {state.successMessage && (
+          <div className="alert alert-success mt-2" role="alert" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* Circular countdown ring */}
+            <div style={{ position: 'relative', width: '50px', height: '50px', flexShrink: 0 }}>
+              <svg width="50" height="50" viewBox="0 0 50 50" style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx="25" cy="25" r="20" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="4" />
+                <circle
+                  cx="25" cy="25" r="20"
+                  fill="none"
+                  stroke="#155724"
+                  strokeWidth="4"
+                  strokeDasharray={`${2 * Math.PI * 20}`}
+                  strokeDashoffset={`${2 * Math.PI * 20 * (1 - (countdown ?? 5) / 5)}`}
+                  strokeLinecap="round"
+                  style={{ transition: 'stroke-dashoffset 0.9s linear' }}
+                />
+              </svg>
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                fontSize: '15px', fontWeight: 'bold', color: '#155724'
+              }}>
+                {countdown ?? 5}
+              </div>
+            </div>
+            <div>
+              <strong>{state.successMessage}</strong>
+              <div style={{ fontSize: '13px', marginTop: '3px' }}>
+                {countdown > 0
+                  ? `Redirecting to login in ${countdown} second${countdown !== 1 ? 's' : ''}…`
+                  : 'Redirecting now…'}
+              </div>
+            </div>
+          </div>
+        )}
         <Formik
           initialValues={{
             name: "",
@@ -246,7 +306,7 @@ function RegistrationForm(props) {
                 }
                 <div className="form-group text-left">
                   <TextInput
-                    label={t('name')}
+                    label={t('nameuser')}
                     placeholder="John Doe"
                     name="name"
                   />

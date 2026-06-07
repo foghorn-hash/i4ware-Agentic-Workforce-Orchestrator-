@@ -32,7 +32,8 @@ class VerificationComponent extends Component {
 		super(props);
 		this.state = {
 			successMessage: null,
-			status: null
+			status: null,
+			success: false,
 		};
 	}
 	
@@ -44,13 +45,19 @@ class VerificationComponent extends Component {
 		console.log('Status:', status, 'Message:', message);
 		this.setState({
 			successMessage: message,
-			status: status
+			status: status,
+			success: true,
+		}, () => {
+			// Notify parent that verification succeeded so it can start countdown
+			if (status !== 'error' && typeof this.props.onSuccess === 'function') {
+				this.props.onSuccess(message);
+			}
 		});
 	}
 	
 	render() {
 		return (
-			<div className={`successMessage ${this.state.status === 'success' || this.state.status === 'already-verified' ? 'success' : 'error'}`}>
+			<div className={`successMessage ${this.state.status === 200 || this.state.status === 'already-verified' ? 'success' : 'error'}`}>
 				{this.state.successMessage}
 			</div>
 		);
