@@ -15,7 +15,18 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        // $schedule->command('inspire')->hourly();
+        // Generate monthly sales invoices for SaaS customers
+        // Runs daily, but only executes when conditions are met (day >= 25)
+        $schedule->command('invoices:generate-sales', ['--domain=www.i4ware.fi'])
+                 ->dailyAt('02:00') // Run at 2 AM daily
+                 ->timezone('Europe/Helsinki')
+                 ->withoutOverlapping()
+                 ->onFailure(function () {
+                     \Log::error('Sales invoice generation job failed');
+                 })
+                 ->onSuccess(function () {
+                     \Log::info('Sales invoice generation job completed successfully');
+                 });
     }
 
     /**

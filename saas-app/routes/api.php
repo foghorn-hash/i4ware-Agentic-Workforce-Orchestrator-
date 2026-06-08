@@ -198,7 +198,8 @@ Route::group(['prefix' => 'purchase-orders'], function ($router) {
 	Route::post('/store', [PurchaseOrdersController::class, 'store'])->name('purchase-orders.store');
 	Route::get('/show/{id}', [PurchaseOrdersController::class, 'show'])->name('purchase-orders.show');
 	Route::put('/update/{id}', [PurchaseOrdersController::class, 'update'])->name('purchase-orders.update');
-	Route::delete('/destroy/{id}', [PurchaseOrdersController::class, 'destroy'])->name('purchase-orders.destroy');
+    Route::get('/download/{id}', [PurchaseOrdersController::class, 'download'])->name('purchase-orders.download');
+
 });
 
 Route::group(['prefix' => 'customers'], function ($router) {

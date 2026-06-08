@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\InvoicesController;
 use App\Models\PurchaseOrder;
 use App\Models\Invoice;
 use App\Models\Customer;
@@ -24,8 +25,12 @@ class PurchaseOrdersController extends Controller
         $perPage = (int) $request->query('per_page', 15);
         $search = $request->query('q', null);
 
-        // Base purchase orders (global visibility)
+        // Base purchase orders: customers only see their own orders, admin sees all
         $poQuery = PurchaseOrder::query();
+        if (empty($user->role) || $user->role !== 'admin') {
+            $poQuery->where('domain', $user->domain);
+        }
+
         if ($search) {
             $poQuery->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', '%' . $search . '%')
@@ -34,14 +39,21 @@ class PurchaseOrdersController extends Controller
         }
         $pos = $poQuery->orderBy('created_at', 'desc')->get();
 
-        // Include admin-domain generated invoices that belong to customers of this user's domain
-        $adminDomain = env('APP_DOMAIN_ADMIN');
+        // Include admin-domain generated invoices in the purchase orders list
         $invoiceItems = collect();
-        if ($adminDomain) {
-            $invoicesQuery = Invoice::where('domain', $adminDomain)
-                ->whereHas('customer', function ($q) use ($user) {
-                    $q->where('domain', $user->domain);
+        $adminDomains = $this->resolveAdminInvoiceDomains();
+        if (!empty($adminDomains)) {
+            $invoicesQuery = Invoice::whereIn('domain', $adminDomains)
+                ->withSum('rows', 'total_including_vat');
+
+            if (!empty($user->role) && $user->role === 'admin') {
+                // Admin sees all provider invoices
+            } else {
+                $customerDomains = $this->resolveCustomerDomains($user->domain);
+                $invoicesQuery->whereHas('customer', function ($q) use ($customerDomains) {
+                    $q->whereIn('domain', $customerDomains);
                 });
+            }
 
             if ($search) {
                 $invoicesQuery->where(function ($q) use ($search) {
@@ -54,12 +66,14 @@ class PurchaseOrdersController extends Controller
 
             // Map invoices into unified shape for the purchase orders list
             $invoiceItems = $invoices->map(function ($inv) {
+                $totalAmount = (float) ($inv->rows_sum_total_including_vat ?? $inv->total_including_vat ?? 0);
+
                 return (object) [
                     'id' => 'inv-' . $inv->id,
                     'source' => 'invoice',
                     'order_number' => $inv->invoice_number,
                     'order_date' => $inv->invoice_date,
-                    'total_amount' => $inv->total_including_vat ?? 0,
+                    'total_amount' => $totalAmount,
                     'status' => $inv->status,
                     'created_at' => $inv->created_at,
                     'original_id' => $inv->id,
@@ -205,5 +219,63 @@ class PurchaseOrdersController extends Controller
 
         $po->delete();
         return response()->json(['success' => true]);
+    }
+
+    public function download(Request $request, $id)
+    {
+        return app(InvoicesController::class)->downloadInvoice($request, $id);
+    }
+
+    private function getRootDomain(string $domain): string
+    {
+        $parts = explode('.', strtolower(trim($domain)));
+        if (count($parts) > 2 && $parts[0] === 'www') {
+            array_shift($parts);
+        }
+
+        if (count($parts) > 2) {
+            return implode('.', array_slice($parts, -2));
+        }
+
+        return implode('.', $parts);
+    }
+
+    private function resolveCustomerDomains(string $userDomain): array
+    {
+        $domain = strtolower(trim($userDomain));
+        $candidates = array_filter([
+            $domain,
+            $this->getRootDomain($domain),
+            'www.' . $this->getRootDomain($domain),
+        ]);
+
+        return collect($candidates)
+            ->map(fn ($domain) => strtolower(trim($domain)))
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function resolveAdminInvoiceDomains(): array
+    {
+        $adminDomain = strtolower(trim((string) env('APP_DOMAIN_ADMIN', '')));
+        $candidates = [];
+
+        if (!empty($adminDomain)) {
+            $candidates[] = $adminDomain;
+            if (str_starts_with($adminDomain, 'www.')) {
+                $candidates[] = substr($adminDomain, 4);
+            } else {
+                $candidates[] = 'www.' . $adminDomain;
+            }
+        }
+
+        return collect($candidates)
+            ->map(fn ($domain) => strtolower(trim($domain)))
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
     }
 }

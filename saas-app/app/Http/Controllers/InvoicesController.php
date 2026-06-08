@@ -63,22 +63,127 @@ class InvoicesController extends Controller
     /**
      * Return list of domains invoice should be visible to this user.
      */
+    private function resolveDomainCandidates(string $domain): array
+    {
+        $domain = strtolower(trim($domain));
+        $candidates = [];
+
+        if ($domain !== '') {
+            $candidates[] = $domain;
+            $candidates[] = $this->getRootDomain($domain);
+            if (!str_starts_with($domain, 'www.')) {
+                $candidates[] = 'www.' . $domain;
+            }
+        }
+
+        return collect($candidates)
+            ->map(fn ($value) => strtolower(trim($value)))
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     private function allowedInvoiceDomains($user)
     {
-        $domains = [];
-        if ($user && isset($user->domain)) {
-            $domains[] = $user->domain;
+        if (!$user || !isset($user->domain)) {
+            return [];
         }
-   
-        return array_unique($domains);
+
+        return $this->resolveDomainCandidates($user->domain);
     }
 
     private function invoiceBelongsToUser($invoice, $user)
     {
-        if (!$invoice) return false;
-        if ($user && isset($user->role) && $user->role === 'admin') return true;
+        if (!$invoice) {
+            return false;
+        }
+
+        if ($user && isset($user->role) && $user->role === 'admin') {
+            return true;
+        }
+
         $allowed = $this->allowedInvoiceDomains($user);
-        return in_array($invoice->domain, $allowed, true);
+        if (in_array(strtolower(trim($invoice->domain)), $allowed, true)) {
+            return true;
+        }
+
+        if ($invoice->customer_id) {
+            $invoiceCustomer = Customer::find($invoice->customer_id);
+            if ($invoiceCustomer && in_array(strtolower(trim($invoiceCustomer->domain)), $allowed, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function getInvoiceTemplateDomain($invoice)
+    {
+        $domainData = DB::table('domains')
+            ->where('domain', $invoice->domain)
+            ->first();
+
+        if ($domainData && !empty($domainData->invoice_template_path)) {
+            return $domainData;
+        }
+
+        $adminDomain = env('APP_DOMAIN_ADMIN');
+        if (!empty($adminDomain)) {
+            $adminDomainData = DB::table('domains')
+                ->where('domain', $adminDomain)
+                ->first();
+
+            if ($adminDomainData && !empty($adminDomainData->invoice_template_path)) {
+                return $adminDomainData;
+            }
+        }
+
+        $rootDomain = $this->getRootDomain($invoice->domain);
+
+        return DB::table('domains')
+            ->where('is_admin', true)
+            ->where(function ($query) use ($rootDomain) {
+                $query->where('domain', $rootDomain)
+                      ->orWhere('domain', 'like', '%.' . $rootDomain);
+            })
+            ->orderBy('domain', 'desc')
+            ->first();
+    }
+
+    private function getRootDomain(string $domain): string
+    {
+        $parts = explode('.', $domain);
+        if (count($parts) > 2 && strtolower($parts[0]) === 'www') {
+            array_shift($parts);
+        }
+
+        if (count($parts) > 2) {
+            return implode('.', array_slice($parts, -2));
+        }
+
+        return implode('.', $parts);
+    }
+
+    private function isProviderDomain(string $domain): bool
+    {
+        $normalized = strtolower(trim($domain));
+        $rootDomain = $this->getRootDomain($normalized);
+        $adminEnv = strtolower(trim((string) env('APP_DOMAIN_ADMIN', '')));
+
+        $domainRow = DB::table('domains')
+            ->where(function ($query) use ($normalized, $rootDomain, $adminEnv) {
+                $query->where('domain', $normalized)
+                      ->orWhere('domain', $rootDomain)
+                      ->orWhere('domain', 'www.' . $rootDomain);
+
+                if ($adminEnv) {
+                    $query->orWhere('domain', $adminEnv);
+                }
+            })
+            ->first();
+
+        return $domainRow && !empty($domainRow->is_admin);
     }
 
     /**
@@ -94,8 +199,17 @@ class InvoicesController extends Controller
         $search = $request->query('q', null);
 
         // Perustellaan kysely ja lisätään hakuehto tarvittaessa
-        $query = Invoice::where('domain', $domain)
-            ->with('customer:id,name,business_id,email');
+        if ($user && isset($user->role) && $user->role === 'admin') {
+            $query = Invoice::with('customer:id,name,business_id,email');
+        } elseif ($domain) {
+            $query = Invoice::whereIn('domain', $this->resolveDomainCandidates($domain))
+                ->with('customer:id,name,business_id,email');
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'User domain not found'
+            ], 400);
+        }
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -467,11 +581,7 @@ class InvoicesController extends Controller
             ], 404);
         }
 
-        $customer = Customer::where('id', $invoice->customer_id)
-            ->where(function($q) use ($invoice, $user) {
-                // customer may belong to the invoice domain; allow admin-domain invoices to be visible
-                $q->where('domain', $invoice->domain);
-            })->first();
+        $customer = Customer::find($invoice->customer_id);
 
         if (!$customer) {
             return response()->json([
@@ -517,16 +627,14 @@ class InvoicesController extends Controller
             ], 404);
         }
 
-        // Hae domain-tiedot ja Excel-pohjan polku
-        // Use invoice's domain for domain-specific settings/template
-        $domainData = DB::table('domains')
-            ->where('domain', $invoice->domain)
-            ->first();
+        // Find template settings for this invoice.
+        // Prefer the invoice domain, but fall back to the admin domain template if needed.
+        $domainData = $this->getInvoiceTemplateDomain($invoice);
 
-        if (!$domainData || !isset($domainData->invoice_template_path)) {
+        if (!$domainData || empty($domainData->invoice_template_path)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invoice template not configured for this domain'
+                'message' => 'Invoice template not configured for this domain or its admin domain'
             ], 400);
         }
 

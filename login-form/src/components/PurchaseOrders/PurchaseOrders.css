@@ -1,19 +1,78 @@
+﻿.purchase-orders-page {
+  padding: 24px;
+  color: #f8f9fa;
+}
+
+.purchase-orders-page h2 {
+  margin-bottom: 20px;
+  color: #ffffff;
+}
+
+.purchase-orders-form {
+  background: rgba(33, 37, 41, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.purchase-orders-form .form-control,
+.purchase-orders-form .form-select {
+  background-color: #212529;
+  border-color: #495057;
+  color: #f8f9fa;
+}
+
+.purchase-orders-form .form-control:focus,
+.purchase-orders-form .form-select:focus {
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.purchase-orders-table-wrapper {
+  overflow-x: auto;
+}
+
 .purchase-orders-table {
-  margin-top: 20px;
+  width: 100%;
+  margin-top: 0;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .purchase-orders-table thead tr th {
-  background-color: #f8f9fa;
-  font-weight: bold;
+  background-color: rgba(13, 110, 253, 0.95);
+  color: #ffffff;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.purchase-orders-table tbody tr {
+  transition: background-color 0.2s ease;
 }
 
 .purchase-orders-table tbody tr td {
   vertical-align: middle;
-  color: white !important;
-  background-color: #343a40;
+  color: #e9ecef !important;
+  background-color: #1f2937;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .purchase-orders-table tbody tr:hover {
-  background-color: #495057;
+  background-color: #343a40;
   cursor: pointer;
+}
+
+.purchase-orders-table tbody tr td:first-child,
+.purchase-orders-table tbody tr th:first-child {
+  padding-left: 16px;
+}
+
+.purchase-orders-table tbody tr td:last-child,
+.purchase-orders-table tbody tr th:last-child {
+  padding-right: 16px;
+}
+
+.purchase-orders-table td,
+.purchase-orders-table th {
+  padding: 12px 10px;
 }

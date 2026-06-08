@@ -166,6 +166,10 @@ function EditInvoice() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  const invoiceTotal = invoiceLines.reduce((sum, line) => {
+    return sum + (parseFloat(line.total_including_vat || 0) || 0);
+  }, 0);
   const [paymentTerms, setPaymentTerms] = useState([]);
   const [isLoadingPaymentTerms, setIsLoadingPaymentTerms] = useState(false);
 
@@ -814,6 +818,9 @@ function EditInvoice() {
                 )}
               </tbody>
             </Table>
+            <div className="d-flex justify-content-end mb-3">
+              <strong>Rivien summa: {invoiceTotal.toFixed(2)} €</strong>
+            </div>
             <div className="d-flex gap-2 mb-3">
               <Button variant="success" size="sm" onClick={handleAddLine}>
                 {strings.addLine}

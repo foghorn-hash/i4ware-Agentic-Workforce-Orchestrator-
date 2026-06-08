@@ -38,9 +38,10 @@ class InvoiceGenerationService
 
             $isProviderDomain = false;
             $providerCustomer = null;
-            $providerDomain = Domain::where('domain', $domain)->first();
+            $providerDomain = $this->resolveProviderDomainRecord($domain);
 
             if ($providerDomain && $providerDomain->is_admin) {
+                $domain = $providerDomain->domain;
                 $isProviderDomain = true;
                 $providerCustomer = $this->ensureCustomerRecordForDomain($domain, $domain);
             }
@@ -123,8 +124,9 @@ class InvoiceGenerationService
     }
 
     /**
-     * Create a single invoice for a customer, and if this is a provider domain,
-     * also create a matching purchase invoice for the customer domain.
+     * Create a single invoice for a customer.
+     * For provider/admin domains, only create the admin-domain invoice that
+     * should appear in customer Purchase Orders, not a customer-domain sales invoice.
      */
     private function createInvoiceForCustomer(
         Customer $customer,
@@ -145,7 +147,7 @@ class InvoiceGenerationService
         }
 
         if ($providerCustomer && $providerCustomer->domain !== $customer->domain) {
-            $salesInvoice = $this->createInvoiceRecord(
+            $invoice = $this->createInvoiceRecord(
                 $customer,
                 $providerCustomer->domain,
                 $invoiceDate,
@@ -155,18 +157,8 @@ class InvoiceGenerationService
                 $dryRun
             );
 
-            $this->createInvoiceRecord(
-                $providerCustomer,
-                $customer->domain,
-                $invoiceDate,
-                $dueDate,
-                $paymentTerm,
-                $invoiceRows,
-                $dryRun
-            );
-
             return [
-                'invoice' => $salesInvoice,
+                'invoice' => $invoice,
                 'total_amount' => array_sum(array_column($invoiceRows, 'total_excluding_vat')),
             ];
         }
@@ -227,10 +219,35 @@ class InvoiceGenerationService
 
     private function ensureCustomerRecordForDomain(string $domain, ?string $name = null): Customer
     {
-        return Customer::firstOrCreate(
+        $customer = Customer::firstOrCreate(
             ['domain' => $domain],
-            ['name' => $name ?? $domain]
+            ['name' => $this->resolveCustomerNameForDomain($domain, $name)]
         );
+
+        return $this->syncCustomerNameFromDomain($customer);
+    }
+
+    private function resolveCustomerNameForDomain(string $domain, ?string $fallback = null): string
+    {
+        return $this->getDomainCompanyName($domain) ?: $fallback ?? $domain;
+    }
+
+    private function getDomainCompanyName(string $domain): ?string
+    {
+        $domainModel = Domain::where('domain', $domain)->first();
+        return $domainModel ? $domainModel->company_name : null;
+    }
+
+    private function syncCustomerNameFromDomain(Customer $customer): Customer
+    {
+        $resolvedName = $this->resolveCustomerNameForDomain($customer->domain, $customer->name);
+
+        if ($resolvedName !== $customer->name) {
+            $customer->name = $resolvedName;
+            $customer->save();
+        }
+
+        return $customer;
     }
 
     private function buildInvoiceRowsForDomain(string $domain, float $pricePerUserPerMonth): array
@@ -279,51 +296,31 @@ class InvoiceGenerationService
      */
     private function getInvoiceCustomersForDomain(string $domain)
     {
-        $providerDomain = Domain::where('domain', $domain)->first();
+        $providerDomain = $this->resolveProviderDomainRecord($domain);
 
         if (!$providerDomain || !$providerDomain->is_admin) {
             return Customer::where('domain', $domain)
                 ->whereNull('deleted_at')
-                ->get();
+                ->get()
+                ->map(function (Customer $customer) {
+                    return $this->syncCustomerNameFromDomain($customer);
+                });
         }
 
-        $rootDomain = $this->getRootDomain($domain);
-        $customerDomains = Domain::where('is_admin', false)
-            ->where(function ($query) use ($rootDomain) {
-                $query->where('domain', 'like', '%.' . $rootDomain)
-                      ->orWhere('domain', $rootDomain);
-            })
-            ->pluck('domain');
-
-        if ($customerDomains->isEmpty()) {
-            return collect();
-        }
-
-        $existingCustomers = Customer::whereIn('domain', $customerDomains)
+        // Admin provider should invoice all non-admin customers.
+        $customers = Customer::where('domain', '!=', $providerDomain->domain)
             ->whereNull('deleted_at')
-            ->get()
-            ->keyBy('domain');
+            ->get();
 
-        $customers = collect();
-        foreach ($customerDomains as $customerDomain) {
-            if ($existingCustomers->has($customerDomain)) {
-                $customers->push($existingCustomers->get($customerDomain));
-                continue;
-            }
-
-            $customers->push(Customer::create([
-                'name' => $customerDomain,
-                'domain' => $customerDomain,
-            ]));
-        }
-
-        return $customers;
+        return $customers->map(function (Customer $customer) {
+            return $this->syncCustomerNameFromDomain($customer);
+        });
     }
 
     private function getRootDomain(string $domain): string
     {
-        $parts = explode('.', $domain);
-        if (count($parts) > 2 && strtolower($parts[0]) === 'www') {
+        $parts = explode('.', strtolower($domain));
+        if (count($parts) > 2 && $parts[0] === 'www') {
             array_shift($parts);
         }
 
@@ -332,6 +329,37 @@ class InvoiceGenerationService
         }
 
         return implode('.', $parts);
+    }
+
+    private function resolveProviderDomainRecord(string $domain): ?Domain
+    {
+        $domain = strtolower(trim($domain));
+        $adminEnv = trim(strtolower((string) env('APP_DOMAIN_ADMIN', '')));
+        $rootDomain = $this->getRootDomain($domain);
+
+        if ($adminEnv) {
+            if ($adminEnv === $domain || $adminEnv === $rootDomain || $adminEnv === 'www.' . $rootDomain) {
+                $domain = $adminEnv;
+            }
+        }
+
+        $providerDomain = Domain::where('domain', $domain)->first();
+        if ($providerDomain) {
+            return $providerDomain;
+        }
+
+        $providerDomain = Domain::where('domain', $rootDomain)->first();
+        if ($providerDomain) {
+            return $providerDomain;
+        }
+
+        return Domain::where('is_admin', true)
+            ->where(function ($query) use ($rootDomain) {
+                $query->where('domain', $rootDomain)
+                      ->orWhere('domain', 'like', '%.' . $rootDomain);
+            })
+            ->orderBy('domain', 'desc')
+            ->first();
     }
 
     /**

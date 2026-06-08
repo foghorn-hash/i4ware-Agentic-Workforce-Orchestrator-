@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ACCESS_TOKEN_NAME, API_BASE_URL, API_DEFAULT_LANGUAGE } from '../../constants/apiConstants';
 import { Button, Form, Table } from 'react-bootstrap';
+import { Download } from 'react-bootstrap-icons';
 import './PurchaseOrders.css';
 
 function getAuthHeaders() {
@@ -45,10 +46,30 @@ export default function PurchaseOrders() {
       });
   }
 
+  const handleDownloadInvoice = async (invoiceId) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/purchase-orders/download/${invoiceId}`, {
+        headers: getAuthHeaders(),
+        responseType: 'blob'
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `invoice_${invoiceId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+    } catch (err) {
+      console.error('Error downloading invoice:', err);
+      alert('Error downloading invoice');
+    }
+  };
+
   return (
-    <div>
+    <div className="purchase-orders-page">
       <h2>Purchase Orders</h2>
-      <div>
+      <div className="purchase-orders-form">
         <Form onSubmit={handleSubmit} className="mb-3">
           <Form.Group controlId="order_number">
             <Form.Label>Order number</Form.Label>
@@ -70,7 +91,7 @@ export default function PurchaseOrders() {
         </Form>
       </div>
 
-      <div>
+      <div className="purchase-orders-table-wrapper">
         {loading ? <p>Loading…</p> : (
           <Table striped bordered hover className="purchase-orders-table">
             <thead>
@@ -80,16 +101,39 @@ export default function PurchaseOrders() {
                 <th>Date</th>
                 <th>Total</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {orders.map(o => (
-                <tr key={o.id} className={`purchase-order-${o.id} ${o.status === 'draft' ? 'purchase-order-draft' : ''}`} onClick={() => alert(`Order #${o.id}\nNumber: ${o.order_number}\nDate: ${o.order_date}\nTotal: ${o.total_amount}\nStatus: ${o.status}`)}>
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', color: '#adb5bd' }}>
+                    No purchase orders or invoices found.
+                  </td>
+                </tr>
+              ) : orders.map(o => (
+                <tr key={o.id} className={`purchase-order-${o.id} ${o.status === 'draft' ? 'purchase-order-draft' : ''}`}>
                   <td>{o.id}</td>
                   <td>{o.order_number}</td>
                   <td>{o.order_date}</td>
                   <td>{o.total_amount}</td>
                   <td>{o.status}</td>
+                  <td>
+                    {o.source === 'invoice' ? (
+                      <Button
+                        variant="outline-light"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadInvoice(o.original_id);
+                        }}
+                      >
+                        <Download />
+                      </Button>
+                    ) : (
+                      <span style={{ color: '#adb5bd' }}>N/A</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
