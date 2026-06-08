@@ -25,10 +25,12 @@ class PurchaseOrdersController extends Controller
         $perPage = (int) $request->query('per_page', 15);
         $search = $request->query('q', null);
 
-        // Base purchase orders: customers only see their own orders, admin sees all
+        // Base purchase orders: customers only see their own orders, admin does not see customer POs here
         $poQuery = PurchaseOrder::query();
         if (empty($user->role) || $user->role !== 'admin') {
             $poQuery->where('domain', $user->domain);
+        } else {
+            $poQuery->whereRaw('1 = 0');
         }
 
         if ($search) {
